@@ -20,6 +20,14 @@ def get_openai_client():
 # -----------------------------------------
 # Load spaCy model for Named Entity Recognition (NER)
 # -----------------------------------------
+
+# Ensure the model is downloaded before usage
+try:
+    nlp = spacy.load("en_core_web_sm")
+except OSError:
+    download("en_core_web_sm")
+    nlp = spacy.load("en_core_web_sm")
+
 nlp = spacy.load("en_core_web_sm")
 
 
