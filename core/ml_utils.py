@@ -11,7 +11,7 @@ REGISTRY_DIR = "mlops/registry"
 # ===============================================================
 # LOAD TRAINED MODEL + METADATA
 # ===============================================================
-def load_trained_model(model_name="city_kmeans"):
+def load_trained_model(model_name="city_clusters"):
     """
     Loads model + metadata from mlops/registry.
     """
@@ -31,6 +31,7 @@ def load_trained_model(model_name="city_kmeans"):
             metadata = json.load(f)
 
     return model, metadata
+
 
 
 # ===============================================================
