@@ -1,3 +1,5 @@
+#scripts/build_city_rag_embeddings.py
+
 import os
 import json
 import pandas as pd
