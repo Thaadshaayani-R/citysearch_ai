@@ -1,12 +1,9 @@
 #dash.py
 
-# -------------------------------------------------
-# IMPORTS - Lightweight at top
-# -------------------------------------------------
 import os
 import io
-import re
 import json
+from db_config import get_engine, get_connection
 import pandas as pd
 import streamlit as st
 from openai import OpenAI
@@ -14,95 +11,36 @@ import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.decomposition import PCA
 
-from db_config import get_engine, get_connection
-from sqlalchemy import text
+# core imports
+from core.query_router import build_sql_with_fallback
+from core.semantic_search import semantic_city_search
+from core.intent_classifier import classify_query_intent
+from core.smart_router import smart_route
+from core.ml_explain import explain_ml_results
+from core.score_translate import to_level
 
+from mlops.retrain import retrain
 
-# -------------------------------------------------
-# LAZY IMPORTS (cached - loads once)
-# -------------------------------------------------
-@st.cache_resource
-def get_core_modules():
-    """Load heavy modules once and cache."""
-    from core.query_router import build_sql_with_fallback
-    from core.semantic_search import semantic_city_search
-    from core.intent_classifier import classify_query_intent
-    from core.smart_router import smart_route
-    from core.ml_explain import explain_ml_results
-    from core.score_translate import to_level
-    from core.cluster_router import (
-        cluster_all,
-        cluster_by_state,
-        cluster_single_city,
-        cluster_similar_to,
-    )
-    from core.cluster_explain import explain_cluster
-    from core.lifestyle_rag_v2 import try_build_lifestyle_card
-    from core.ml_utils import load_trained_model, load_feature_data
-    from mlops.monitoring import run_monitoring
-    from mlops.retrain import retrain
-    
-    return {
-        'build_sql_with_fallback': build_sql_with_fallback,
-        'semantic_city_search': semantic_city_search,
-        'classify_query_intent': classify_query_intent,
-        'smart_route': smart_route,
-        'explain_ml_results': explain_ml_results,
-        'to_level': to_level,
-        'cluster_all': cluster_all,
-        'cluster_by_state': cluster_by_state,
-        'cluster_single_city': cluster_single_city,
-        'cluster_similar_to': cluster_similar_to,
-        'explain_cluster': explain_cluster,
-        'try_build_lifestyle_card': try_build_lifestyle_card,
-        'load_trained_model': load_trained_model,
-        'load_feature_data': load_feature_data,
-        'run_monitoring': run_monitoring,
-        'retrain': retrain,
-    }
+# clustering helpers
+from core.cluster_router import (
+    cluster_all,
+    cluster_by_state,
+    cluster_single_city,
+    cluster_similar_to,
+)
+from core.cluster_explain import explain_cluster
 
+# Lifestyle RAG
+from core.lifestyle_rag_v2 import try_build_lifestyle_card
 
-# Load modules once
-_modules = get_core_modules()
+# ML utilities
+from core.ml_utils import load_trained_model, load_feature_data
 
-# Extract functions for easy access
-build_sql_with_fallback = _modules['build_sql_with_fallback']
-semantic_city_search = _modules['semantic_city_search']
-classify_query_intent = _modules['classify_query_intent']
-smart_route = _modules['smart_route']
-explain_ml_results = _modules['explain_ml_results']
-to_level = _modules['to_level']
-cluster_all = _modules['cluster_all']
-cluster_by_state = _modules['cluster_by_state']
-cluster_single_city = _modules['cluster_single_city']
-cluster_similar_to = _modules['cluster_similar_to']
-explain_cluster = _modules['explain_cluster']
-try_build_lifestyle_card = _modules['try_build_lifestyle_card']
-load_trained_model = _modules['load_trained_model']
-load_feature_data = _modules['load_feature_data']
-run_monitoring = _modules['run_monitoring']
-retrain = _modules['retrain']
+# MLOps imports
+from mlops.monitoring import run_monitoring
+from mlops.retrain import retrain
 
-
-# -------------------------------------------------
-# CACHED MODEL & DATA LOADING
-# -------------------------------------------------
-@st.cache_resource
-def load_models():
-    """Load ML models once and cache."""
-    model, metadata = load_trained_model("city_clusters")
-    return model, metadata
-
-
-@st.cache_data(ttl=3600)
-def load_features():
-    """Load feature data once and cache for 1 hour."""
-    return load_feature_data()
-
-
-# Load cached data
-model, metadata = load_models()
-df_features = load_features()
+import time
 
 # Add this helper at the top of app.py
 def log_time(label, start):
