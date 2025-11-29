@@ -58,8 +58,4 @@ database/Migrated Scripts/
 
 big.txt
 
-models/
-*.pkl
-*.joblib
-mlops/registry/*.pkl
 
