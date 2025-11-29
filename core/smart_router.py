@@ -1,10 +1,10 @@
 # core/smart_router.py
 
 import re
-from core.intent_classifier import classify_query_intent
+from intent_classifier import classify_query_intent
 
 # Clustering (safe to import at top)
-from core.cluster_router import (
+from cluster_router import (
     cluster_all,
     cluster_by_state,
     cluster_single_city,
