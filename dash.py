@@ -41,6 +41,29 @@ from mlops.monitoring import run_monitoring
 from mlops.retrain import retrain
 
 # -------------------------------------------------
+# CACHED MODEL & DATA LOADING
+# -------------------------------------------------
+@st.cache_resource
+def load_models():
+    """Load ML models once and cache."""
+    from core.ml_utils import load_trained_model
+    model, metadata = load_trained_model("city_clusters")
+    return model, metadata
+
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def load_features():
+    """Load feature data once and cache."""
+    from core.ml_utils import load_feature_data
+    return load_feature_data()
+
+
+# Use cached versions
+model, metadata = load_models()
+df_features = load_features()
+
+
+# -------------------------------------------------
 # SAFETY FILTERS (BLOCK 2)
 # -------------------------------------------------
 import re
