@@ -1,32 +1,27 @@
-#ml_utils.py
+# core/ml_utils.py
 
 import os
 import json
 import joblib
 import pandas as pd
+import streamlit as st
+from sqlalchemy import text
 from db_config import get_engine
 
-# Folder that stores your trained ML models
 REGISTRY_DIR = "mlops/registry"
 
 
-# ===============================================================
-# LOAD TRAINED MODEL + METADATA
-# ===============================================================
+@st.cache_resource
 def load_trained_model(model_name="city_clusters"):
-    """
-    Loads model + metadata from the models directory.
-    """
-    model_path = os.path.join("models", f"{model_name}.pkl")  # Corrected path
-    meta_path = os.path.join("models", f"{model_name}_metadata.json")  # Corrected path
+    """Loads model + metadata, cached."""
+    model_path = os.path.join("models", f"{model_name}.pkl")
+    meta_path = os.path.join("models", f"{model_name}_metadata.json")
 
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"❌ Model not found: {model_path}")
 
-    # Load model
     model = joblib.load(model_path)
 
-    # Load metadata
     metadata = {}
     if os.path.exists(meta_path):
         with open(meta_path, "r", encoding="utf-8") as f:
@@ -35,12 +30,9 @@ def load_trained_model(model_name="city_clusters"):
     return model, metadata
 
 
-
-
-# ===============================================================
-# LOAD FEATURE DATA FROM SQL SERVER (CLEAN VERSION)
-# ===============================================================
+@st.cache_data(ttl=3600)
 def load_feature_data():
+    """Load feature data, cached for 1 hour."""
     engine = get_engine()
 
     query_str = """
@@ -51,16 +43,9 @@ def load_feature_data():
           AND avg_household_size > 0
     """
 
-    # ✅ DO NOT use connection.cursor()
-    # ✅ DO NOT use pd.read_sql_query()
-    # ✅ Use engine.execute() and convert to DataFrame manually
-
     with engine.connect() as conn:
-        result = conn.execute(query_str)   # SQLAlchemy executes the string safely
+        result = conn.execute(text(query_str))
         rows = result.fetchall()
         cols = result.keys()
 
-    # Convert result → DataFrame
-    df = pd.DataFrame(rows, columns=cols)
-    return df
-
+    return pd.DataFrame(rows, columns=cols)
