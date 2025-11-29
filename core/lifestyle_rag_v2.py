@@ -1,6 +1,7 @@
 import pandas as pd
 import streamlit as st
-import sqlalchemy as sa
+from sqlalchemy import text
+import sqlalchemy
 from openai import OpenAI
 from db_config import get_engine
 
@@ -81,7 +82,7 @@ Rules:
 def get_city_data_from_db(city_name: str):
     engine = get_engine()
 
-    sql = sa.text("""
+    sql = text("""
         SELECT TOP 1
             c.city,
             c.state,
@@ -97,7 +98,7 @@ def get_city_data_from_db(city_name: str):
 
 
     with engine.connect() as conn:
-        df = pd.read_sql_query(sql, conn, params={"city": city_name})
+        df = pd.read_sql(sql, conn, params={"city": city_name})
 
 
     if df.empty:
