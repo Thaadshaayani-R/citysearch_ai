@@ -3,7 +3,7 @@ import pickle
 import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
-from cluster_labels import CLUSTER_LABELS   # NEW
+from .cluster_labels import CLUSTER_LABELS   # NEW
 import streamlit as st
 
 # -----------------------------
