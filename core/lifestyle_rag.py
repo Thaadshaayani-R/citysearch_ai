@@ -97,7 +97,7 @@ def get_city_data_from_db(city_name: str):
 
 
     with engine.connect() as conn:
-        df = pd.read_sql(sql, conn, params={"city": city_name})
+        df = pd.read_sql(sql, con=conn, params={"city": city_name})
 
     if df.empty:
         return None
