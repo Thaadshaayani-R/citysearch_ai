@@ -4,7 +4,6 @@ from sqlalchemy import text
 from openai import OpenAI
 from db_config import get_engine
 import spacy
-from spacy.cli import download
 
 
 # -----------------------------------------
@@ -23,12 +22,7 @@ def get_openai_client():
 
 # Ensure the model is downloaded before usage
 
-try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    # Model not found, so download it
-    download("en_core_web_sm")
-    nlp = spacy.load("en_core_web_sm")
+nlp = spacy.load("en_core_web_sm")
 
 
 # -----------------------------------------
