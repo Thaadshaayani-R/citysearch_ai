@@ -77,11 +77,10 @@ Rules:
 # -----------------------------------------
 # Database fetch
 # -----------------------------------------
+from sqlalchemy import text
+
 def get_city_data_from_db(city_name: str):
-    """
-    Query the database to fetch city data based on the city name.
-    """
-    engine = get_engine()  # USE SQLALCHEMY ENGINE — NOT RAW CONNECTION
+    engine = get_engine()
 
     sql = text("""
         SELECT TOP 1
@@ -93,17 +92,18 @@ def get_city_data_from_db(city_name: str):
             p.description
         FROM dbo.cities AS c
         LEFT JOIN dbo.city_profiles AS p
-            ON c.city = p.city AND c.state = p.state
+            ON c.city = p.city
         WHERE LOWER(c.city) = LOWER(:city)
     """)
 
-    with engine.connect() as conn:  # IMPORTANT FIX
+    with engine.connect() as conn:
         df = pd.read_sql(sql, conn, params={"city": city_name})
 
     if df.empty:
         return None
 
     return df.iloc[0].to_dict()
+
 
 
 # -----------------------------------------
