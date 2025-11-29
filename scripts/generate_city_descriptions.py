@@ -1,3 +1,5 @@
+#scripts/generate_city_description.py
+
 import os
 import time
 import streamlit as st
