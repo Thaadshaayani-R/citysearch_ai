@@ -1108,7 +1108,6 @@ if mode == "Search":
         # ---------------------------------------------
         # STEP 0: Lifestyle RAG
         # ---------------------------------------------
-        # Trigger the new lifestyle card builder here
         lifestyle_card = try_build_lifestyle_card(q)
         if lifestyle_card is not None:
             city = lifestyle_card["city"]
@@ -1119,7 +1118,6 @@ if mode == "Search":
             desc = lifestyle_card["description"]
             insight = lifestyle_card["ai_summary"]
 
-            # Render the lifestyle profile in your UI
             card_html = f"""
             <div class="insight-card">
               <div class="insight-label">Lifestyle Profile Generated with RAG</div>
