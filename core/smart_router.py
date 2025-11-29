@@ -1,11 +1,10 @@
 # core/smart_router.py
+# core/smart_router.py
 
 import re
 from .intent_classifier import classify_query_intent
 from .lifestyle_rag_v2 import try_build_lifestyle_card
 from .lifestyle_rag_v2 import _looks_like_lifestyle_query
-
-
 
 # Clustering (safe to import at top)
 from .cluster_router import (
@@ -13,6 +12,14 @@ from .cluster_router import (
     cluster_by_state,
     cluster_single_city,
     cluster_similar_to,
+)
+
+# ✅ ADD THIS — ML Ranking imports
+from .ml_router import (
+    run_family_ranking,
+    run_young_ranking,
+    run_retirement_ranking,
+    run_single_city_prediction,
 )
 
 # -------------------------------------------------------------------
