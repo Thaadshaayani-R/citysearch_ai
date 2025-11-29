@@ -87,19 +87,15 @@ def smart_route(query: str):
         (mode, payload)
     """
 
-    # -------------------------------------------------------
-    # IMPORTANT FIX:
-    # Lazy-load ML router to avoid DB driver import errors on Streamlit Cloud
-    # -------------------------------------------------------
-    from core.ml_router import (
-        run_family_ranking,
-        run_young_ranking,
-        run_retirement_ranking,
-        run_single_city_prediction,
-    )
-
     q = query.lower().strip()
     single_best = _is_single_city_question(q)
+
+    # Check for lifestyle-related queries
+    if _looks_like_lifestyle_query(q):
+        # Pass the query to lifestyle RAG card builder
+        lifestyle_card = try_build_lifestyle_card(query)
+        if lifestyle_card:
+            return "lifestyle_query", lifestyle_card
 
     # -------------------------------------------------------
     # 🔥 ML RANKING: Families
@@ -190,3 +186,4 @@ def smart_route(query: str):
     # ❗ FALLBACK → SQL or semantic search
     # -------------------------------------------------------
     return None, None
+
