@@ -29,7 +29,7 @@ from core.cluster_router import (
 from core.cluster_explain import explain_cluster
 
 # Lifestyle RAG
-from core.lifestyle_rag import try_build_lifestyle_card
+from core.lifestyle_rag_v2 import try_build_lifestyle_card
 
 # ML utilities
 from core.ml_utils import load_trained_model, load_feature_data
