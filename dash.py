@@ -90,7 +90,8 @@ def toggle_theme():
 # -------------------------------------------------
 # GLOBAL ML OBJECTS
 # -------------------------------------------------
-model, metadata = load_trained_model("city_kmeans")
+model, metadata = load_trained_model("city_clusters")  # New line
+")
 df_features = load_feature_data()
 
 
