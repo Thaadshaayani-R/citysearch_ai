@@ -1072,29 +1072,38 @@ if mode == "Search":
             "profile", "retirement", "family", "professionals"
         ]
 
-        if not any(word in q_low for word in allowed_keywords):
-
-            st.markdown(
-                """
-                <div class='insight-card'>
-                    <div class='insight-label'>Out of Scope</div>
-                    <div class='insight-title'>I'm here to help with US cities</div>
-                    <div class='insight-text'>
-                        Your question doesn't match city-related topics.<br><br>
-                        You can ask about:<br>
-                        • population<br>
-                        • lifestyle or city profiles<br>
-                        • clusters or similar cities<br>
-                        • best cities for families, professionals, retirement<br><br>
-                        Please ask something related to <b>US cities</b>.
+        # --- NEW FIX ---
+        # First check if lifestyle RAG can answer
+        _life_test = try_build_lifestyle_card(q)
+        
+        if _life_test is None:
+            # Only run the out-of-scope guard when lifestyle RAG can't handle it
+            if not any(word in q_low for word in allowed_keywords):
+                st.markdown(
+                    """
+                    <div class='insight-card'>
+                        <div class='insight-label'>Out of Scope</div>
+                        <div class='insight-title'>I'm here to help with US cities</div>
+                        <div class='insight-text'>
+                            Your question doesn't match city-related topics.<br><br>
+                            You can ask about:<br>
+                            • population<br>
+                            • lifestyle or city profiles<br>
+                            • clusters or similar cities<br>
+                            • best cities for families, professionals, retirement<br><br>
+                            Please ask something related to <b>US cities</b>.
+                        </div>
                     </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
+                    """,
+                    unsafe_allow_html=True
+                )
+                st.stop()
+        else:
+            # If lifestyle RAG recognized the query, show the card immediately
+            lifestyle_card = _life_test
+            # your existing card rendering code goes here
+            ...
             st.stop()
-
 
 
         # Initial log entry
