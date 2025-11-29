@@ -33,18 +33,6 @@ def classify_query_intent(query: str):
     - Subjective + State mention → Hybrid (semantic within that state)
     """
     q = query.lower()
-    
-    # Check for lifestyle-related queries by keywords
-    lifestyle_keywords = [
-        "life in", "living in", "what is life like in", "what is it like in", "tell me about", "living in", "life in"
-    ]
-    if any(keyword in q for keyword in lifestyle_keywords):
-        # If there is a state mentioned with lifestyle keywords, classify as hybrid
-        state = _detect_state(q)
-        if state:
-            return "hybrid", state  # Lifestyle with state -> hybrid
-        return "semantic", None  # Lifestyle without state -> semantic
-
     # ============================================================
     # ML INTENTS (Family / Young Adults / Retirement)
     # ============================================================
@@ -68,6 +56,8 @@ def classify_query_intent(query: str):
     # ============================================================
     if "score for" in q or "predict" in q:
         return "ml_single_city", None
+
+
 
     # numeric / structured signals
     numeric_keywords = [
@@ -130,4 +120,3 @@ def classify_query_intent(query: str):
 
     # default fallback: treat as SQL
     return "sql", state
-
