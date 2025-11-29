@@ -1,3 +1,10 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:7682a3d8de3fef5ad7dee06bc9d5925e73856626a4ab8178c5675c9cc89ebe6c
-size 359
+{
+    "model_name": "city_kmeans",
+    "version": "1.0",
+    "model_path": "models/city_clusters.pkl",
+    "silhouette_score": 0.45,
+    "trained_on": "2025-01-01 00:00:00",
+    "num_cities": 500,
+    "drift_detected": false,
+    "notes": "Initial model deployment"
+}
