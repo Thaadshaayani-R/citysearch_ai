@@ -7,6 +7,38 @@ import sqlalchemy
 from openai import OpenAI
 from db_config import get_engine
 
+# Add at top of lifestyle_rag_v2.py after imports
+
+@st.cache_data(ttl=3600)
+def get_city_data_from_db(city_name: str):
+    """Fetch city data, cached for 1 hour."""
+    engine = get_engine()
+
+    sql = text("""
+        SELECT TOP 1
+            c.city,
+            c.state,
+            c.population,
+            c.median_age,
+            c.avg_household_size,
+            p.description
+        FROM dbo.cities AS c
+        LEFT JOIN dbo.city_profiles AS p
+            ON c.city = p.city AND c.state = p.state
+        WHERE LOWER(c.city) = LOWER(:city)
+    """)
+
+    with engine.connect() as conn:
+        result = conn.execute(sql, {"city": city_name})
+        rows = result.fetchall()
+        cols = result.keys()
+
+    if not rows:
+        return None
+
+    df = pd.DataFrame(rows, columns=cols)
+    return df.iloc[0].to_dict()
+
 
 # -----------------------------------------
 # OpenAI client
