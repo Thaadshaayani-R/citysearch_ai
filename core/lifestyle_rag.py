@@ -3,7 +3,6 @@ import streamlit as st
 from sqlalchemy import text
 from openai import OpenAI
 from db_config import get_engine
-import spacy  # Using spaCy for city extraction
 
 
 # -----------------------------------------
@@ -17,13 +16,7 @@ def get_openai_client():
 
 
 # -----------------------------------------
-# Load spaCy model for Named Entity Recognition (NER)
-# -----------------------------------------
-nlp = spacy.load("en_core_web_sm")
-
-
-# -----------------------------------------
-# Query pattern triggers (flexible and dynamic)
+# LIFESTYLE TRIGGERS
 # -----------------------------------------
 LIFESTYLE_TRIGGERS = [
     "tell me about",
@@ -32,75 +25,60 @@ LIFESTYLE_TRIGGERS = [
     "life in",
     "living in",
     "live in",
-    "how is life in",  # Added another phrase for flexibility
-    "what's life like in",  # Added another common phrase
+    "how is life in",
+    "what's life like in",
 ]
 
 
-def _extract_city_from_query(query: str):
-    """
-    Use Named Entity Recognition (NER) with spaCy to extract city names dynamically
-    from the query.
-    """
-    # Process the query using spaCy NLP model
-    doc = nlp(query)
-    cities = [ent.text for ent in doc.ents if ent.label_ == "GPE"]  # GPE = Geopolitical Entity
-    if cities:
-        return cities[0]  # Return the first detected city
-    return None  # Return None if no city is detected
-
-
 def _looks_like_lifestyle_query(query: str):
-    """
-    Checks if the query seems to be asking about lifestyle based on trigger phrases.
-    """
+    """Detect general lifestyle intent."""
     q = query.lower()
     return any(p in q for p in LIFESTYLE_TRIGGERS)
 
 
 # -----------------------------------------
-# Main RAG builder
+# GPT-BASED CITY EXTRACTION  (BEST METHOD)
 # -----------------------------------------
-def try_build_lifestyle_card(user_query: str):
+def extract_city_with_gpt(query: str):
     """
-    If the query looks like a lifestyle question,
-    return a dict with city profile data + AI summary.
-    Otherwise, return None.
+    Uses GPT to extract ONLY the city name from any query.
+    Works across all cities, no spaCy required, compatible with Streamlit Cloud.
     """
-    # Check if it's a lifestyle-related query
-    if not _looks_like_lifestyle_query(user_query):
+
+    client = get_openai_client()
+    if client is None:
         return None
 
-    # Extract the city name from the query (using NER or fallback)
-    city = _extract_city_from_query(user_query)
-    if not city:
-        return None  # Return None if no city is found
+    prompt = f"""
+Extract ONLY the city name from this query:
 
-    # Query the database for city data (can be changed based on your data source)
-    city_data = get_city_data_from_db(city)
+"{query}"
 
-    if not city_data:
-        return None  # Return None if no city data is found
+Rules:
+- Return ONLY the city name (example: Dallas)
+- If no city exists, return an empty string
+- Do NOT include states, countries, or extra words
+- Do NOT add explanations
+"""
 
-    # Generate AI summary based on available city data
-    ai_summary = generate_ai_summary(user_query, city_data)
+    try:
+        rsp = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
+        )
+        city = rsp.choices[0].message.content.strip()
+        return city if city else None
 
-    return {
-        "city": city_data['city'],
-        "state": city_data['state'],
-        "population": city_data['population'],
-        "median_age": city_data['median_age'],
-        "avg_household_size": city_data['avg_household_size'],
-        "description": city_data['description'],
-        "ai_summary": ai_summary,
-    }
+    except Exception:
+        return None
 
 
+# -----------------------------------------
+# Database fetch
+# -----------------------------------------
 def get_city_data_from_db(city_name: str):
-    """
-    Query the database to fetch city data based on the city name.
-    """
-    # --- SAFE: SQLAlchemy engine ---
+    """Fetch city profile + stats from the DB."""
     engine = get_engine()
 
     sql = text("""
@@ -113,47 +91,99 @@ def get_city_data_from_db(city_name: str):
             p.description
         FROM dbo.cities AS c
         LEFT JOIN dbo.city_profiles AS p
-            ON c.city = p.city AND c.state = p.state
+          ON c.city = p.city AND c.state = p.state
         WHERE LOWER(c.city) = LOWER(:city)
     """)
 
-    # --- Must use engine.connect() ---
     with engine.connect() as conn:
         df = pd.read_sql(sql, conn, params={"city": city_name})
 
     if df.empty:
-        return None  # No data for the city
+        return None
 
-    return df.iloc[0].to_dict()  # Return data as a dictionary
+    row = df.iloc[0]
+
+    return {
+        "city": row["city"],
+        "state": row["state"],
+        "population": int(row["population"]) if row["population"] is not None else None,
+        "median_age": float(row["median_age"]) if row["median_age"] is not None else None,
+        "avg_household_size": float(row["avg_household_size"]) if row["avg_household_size"] is not None else None,
+        "description": row["description"] or "",
+    }
 
 
+# -----------------------------------------
+# AI SUMMARY GENERATOR
+# -----------------------------------------
 def generate_ai_summary(user_query: str, city_data):
-    """
-    Generate a friendly AI summary based on the city's data and description.
-    """
-    prompt = f"""
-    User question: "{user_query}"
+    """Creates a 2–3 sentence lifestyle summary + bullet points."""
 
-    City Data:
-    - City: {city_data['city']}
-    - State: {city_data['state']}
-    - Population: {city_data['population']}
-    - Median Age: {city_data['median_age']}
-    - Average Household Size: {city_data['avg_household_size']}
-
-    Lifestyle Notes:
-    {city_data['description']}
-
-    Task: Generate a short 2–3 sentence summary of what it's like to live in this city.
-    Include key points like the city's vibe, family-friendliness, opportunities for young professionals, etc.
-    """
-    
-    # Get OpenAI client and generate the summary
     client = get_openai_client()
-    response = client.chat.completions.create(
-        model="gpt-4",
-        temperature=0.3,
-        messages=[{"role": "user", "content": prompt}]
+    if client is None:
+        return "AI lifestyle summary unavailable."
+
+    prompt = f"""
+User question: "{user_query}"
+
+City data:
+City: {city_data['city']}
+State: {city_data['state']}
+Population: {city_data['population']}
+Median age: {city_data['median_age']}
+Average household size: {city_data['avg_household_size']}
+
+Lifestyle notes:
+{city_data['description']}
+
+TASK:
+Write a friendly 2–3 sentence lifestyle summary describing what it's like to live in this city.
+Then add 3 bullet points with key lifestyle highlights.
+
+RULES:
+- Use ONLY the information given.
+- Do NOT invent crime rates, salaries, or extra facts.
+- Keep it friendly and easy to understand.
+"""
+
+    rsp = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.35,
     )
-    
-    return response.choices[0].message.content.strip()
+
+    return rsp.choices[0].message.content.strip()
+
+
+# -----------------------------------------
+# MAIN ENTRY POINT
+# -----------------------------------------
+def try_build_lifestyle_card(user_query: str):
+    """Master handler for lifestyle queries."""
+
+    if not _looks_like_lifestyle_query(user_query):
+        return None
+
+    # 1) Extract city using GPT
+    city = extract_city_with_gpt(user_query)
+    if not city:
+        return None
+
+    # 2) Fetch full city data
+    city_data = get_city_data_from_db(city)
+    if not city_data:
+        return None
+
+    # 3) Generate AI summary
+    ai_summary = generate_ai_summary(user_query, city_data)
+
+    # 4) Return final card
+    return {
+        "city": city_data["city"],
+        "state": city_data["state"],
+        "population": city_data["population"],
+        "median_age": city_data["median_age"],
+        "avg_household_size": city_data["avg_household_size"],
+        "description": city_data["description"],
+        "ai_summary": ai_summary,
+    }
