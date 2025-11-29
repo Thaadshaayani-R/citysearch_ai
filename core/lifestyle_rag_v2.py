@@ -1,49 +1,19 @@
-#lifestyle_rag_v2.py
+# core/lifestyle_rag_v2.py
 
+import re
 import pandas as pd
 import streamlit as st
 from sqlalchemy import text
-import sqlalchemy
 from openai import OpenAI
 from db_config import get_engine
 
-# Add at top of lifestyle_rag_v2.py after imports
-
-@st.cache_data(ttl=3600)
-def get_city_data_from_db(city_name: str):
-    """Fetch city data, cached for 1 hour."""
-    engine = get_engine()
-
-    sql = text("""
-        SELECT TOP 1
-            c.city,
-            c.state,
-            c.population,
-            c.median_age,
-            c.avg_household_size,
-            p.description
-        FROM dbo.cities AS c
-        LEFT JOIN dbo.city_profiles AS p
-            ON c.city = p.city AND c.state = p.state
-        WHERE LOWER(c.city) = LOWER(:city)
-    """)
-
-    with engine.connect() as conn:
-        result = conn.execute(sql, {"city": city_name})
-        rows = result.fetchall()
-        cols = result.keys()
-
-    if not rows:
-        return None
-
-    df = pd.DataFrame(rows, columns=cols)
-    return df.iloc[0].to_dict()
-
 
 # -----------------------------------------
-# OpenAI client
+# OpenAI client (cached)
 # -----------------------------------------
+@st.cache_resource
 def get_openai_client():
+    """Cached OpenAI client - created once."""
     key = st.secrets.get("OPENAI_API_KEY")
     if not key:
         return None
@@ -72,14 +42,45 @@ def _looks_like_lifestyle_query(query: str):
 
 
 # -----------------------------------------
-# GPT-BASED CITY EXTRACTION  (BEST METHOD)
+# FAST CITY EXTRACTION (no GPT - regex based)
 # -----------------------------------------
+def extract_city_fast(query: str):
+    """Try to extract city without GPT first - much faster."""
+    q = query.lower().strip()
+    
+    # Common patterns for lifestyle queries
+    patterns = [
+        r"life in ([a-zA-Z\s]+?)(?:\?|$|,|\.|!)",
+        r"living in ([a-zA-Z\s]+?)(?:\?|$|,|\.|!)",
+        r"tell me about ([a-zA-Z\s]+?)(?:\?|$|,|\.|!)",
+        r"about ([a-zA-Z\s]+?)(?:\?|$|,|\.|!)",
+        r"like in ([a-zA-Z\s]+?)(?:\?|$|,|\.|!)",
+        r"how is ([a-zA-Z\s]+?)(?:\?|$|,|\.|!)",
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, q)
+        if match:
+            city = match.group(1).strip().title()
+            # Validate city name length
+            if len(city) > 2 and len(city) < 30:
+                # Remove common words that aren't cities
+                skip_words = ["the", "a", "an", "it", "this", "that"]
+                if city.lower() not in skip_words:
+                    return city
+    
+    return None
+
+
+# -----------------------------------------
+# GPT-BASED CITY EXTRACTION (cached, fallback)
+# -----------------------------------------
+@st.cache_data(ttl=3600, show_spinner=False)
 def extract_city_with_gpt(query: str):
     """
     Uses GPT to extract ONLY the city name from any query.
-    Works across all cities, no spaCy required, compatible with Streamlit Cloud.
+    Cached for 1 hour to avoid repeated API calls.
     """
-
     client = get_openai_client()
     if client is None:
         return None
@@ -91,7 +92,7 @@ Extract ONLY the city name from this query:
 
 Rules:
 - Return ONLY the city name (example: Dallas)
-- If no city exists, return an empty string
+- If no city exists, return empty string
 - Do NOT include states, countries, or extra words
 - Do NOT add explanations
 """
@@ -100,7 +101,8 @@ Rules:
         rsp = client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0
+            temperature=0,
+            max_tokens=50,  # Limit tokens for speed
         )
         city = rsp.choices[0].message.content.strip()
         return city if city else None
@@ -110,12 +112,28 @@ Rules:
 
 
 # -----------------------------------------
-# Database fetch
+# SMART CITY EXTRACTION (fast first, GPT fallback)
 # -----------------------------------------
+def extract_city_smart(query: str):
+    """Try fast regex extraction first, fallback to GPT if needed."""
+    # Try fast regex first (instant)
+    city = extract_city_fast(query)
+    if city:
+        return city
+    
+    # Fallback to GPT (slower but more accurate)
+    return extract_city_with_gpt(query)
 
-# core/lifestyle_rag_v2.py
 
+# -----------------------------------------
+# Database fetch (cached)
+# -----------------------------------------
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_city_data_from_db(city_name: str):
+    """
+    Fetch city data from database.
+    Cached for 1 hour to avoid repeated DB queries.
+    """
     engine = get_engine()
 
     sql = text("""
@@ -144,79 +162,98 @@ def get_city_data_from_db(city_name: str):
     return df.iloc[0].to_dict()
 
 
-
-
 # -----------------------------------------
-# AI SUMMARY GENERATOR
+# AI SUMMARY GENERATOR (cached per city)
 # -----------------------------------------
-def generate_ai_summary(user_query: str, city_data):
-    """Creates a 2–3 sentence lifestyle summary + bullet points."""
-
+@st.cache_data(ttl=3600, show_spinner=False)
+def generate_ai_summary_cached(city_name: str, city_state: str, population, median_age, avg_household_size, description):
+    """
+    Creates a 2-3 sentence lifestyle summary + bullet points.
+    Cached by city data to avoid repeated API calls.
+    """
     client = get_openai_client()
     if client is None:
         return "AI lifestyle summary unavailable."
 
-    prompt = f"""
-User question: "{user_query}"
+    desc_text = description if description else "No description available."
 
-City data:
-City: {city_data['city']}
-State: {city_data['state']}
-Population: {city_data['population']}
-Median age: {city_data['median_age']}
-Average household size: {city_data['avg_household_size']}
+    prompt = f"""
+City: {city_name}, {city_state}
+Population: {population}
+Median age: {median_age}
+Average household size: {avg_household_size}
 
 Lifestyle notes:
-{city_data['description']}
+{desc_text}
 
 TASK:
-Write a friendly 2–3 sentence lifestyle summary describing what it's like to live in this city.
+Write a friendly 2-3 sentence lifestyle summary describing what it's like to live in this city.
 Then add 3 bullet points with key lifestyle highlights.
 
 RULES:
 - Use ONLY the information given.
 - Do NOT invent crime rates, salaries, or extra facts.
-- Keep it friendly and easy to understand.
+- Keep it friendly and concise.
 """
 
-    rsp = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.35,
-    )
+    try:
+        rsp = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.35,
+            max_tokens=300,  # Limit for speed
+        )
+        return rsp.choices[0].message.content.strip()
+    
+    except Exception as e:
+        return f"AI summary unavailable: {str(e)}"
 
-    return rsp.choices[0].message.content.strip()
+
+def generate_ai_summary(user_query: str, city_data: dict):
+    """Wrapper that calls cached summary function."""
+    return generate_ai_summary_cached(
+        city_name=city_data.get("city", ""),
+        city_state=city_data.get("state", ""),
+        population=city_data.get("population"),
+        median_age=city_data.get("median_age"),
+        avg_household_size=city_data.get("avg_household_size"),
+        description=city_data.get("description"),
+    )
 
 
 # -----------------------------------------
 # MAIN ENTRY POINT
 # -----------------------------------------
 def try_build_lifestyle_card(user_query: str):
-    """Master handler for lifestyle queries."""
+    """
+    Master handler for lifestyle queries.
+    Optimized with caching at every step.
+    """
 
+    # Step 0: Check if this looks like a lifestyle query
     if not _looks_like_lifestyle_query(user_query):
         return None
 
-    # 1) Extract city using GPT
-    city = extract_city_with_gpt(user_query)
+    # Step 1: Extract city using smart extraction (fast regex first, GPT fallback)
+    city = extract_city_smart(user_query)
     if not city:
         return None
 
-    # 2) Fetch full city data
+    # Step 2: Fetch full city data from DB (cached)
     city_data = get_city_data_from_db(city)
     if not city_data:
         return None
 
-    # 3) Generate AI summary
+    # Step 3: Generate AI summary (cached)
     ai_summary = generate_ai_summary(user_query, city_data)
 
-    # 4) Return final card
+    # Step 4: Return final card
     return {
         "city": city_data["city"],
         "state": city_data["state"],
         "population": city_data["population"],
         "median_age": city_data["median_age"],
         "avg_household_size": city_data["avg_household_size"],
-        "description": city_data["description"],
+        "description": city_data.get("description"),
         "ai_summary": ai_summary,
     }
