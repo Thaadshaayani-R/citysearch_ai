@@ -3,7 +3,8 @@ import streamlit as st
 from sqlalchemy import text
 from openai import OpenAI
 from db_config import get_engine
-import spacy  # Using spaCy for city extraction
+import spacy
+from spacy.cli import download
 
 
 # -----------------------------------------
