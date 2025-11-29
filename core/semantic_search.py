@@ -4,41 +4,15 @@ import json
 import numpy as np
 import pandas as pd
 import streamlit as st
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from openai import OpenAI
-import urllib
+from db_config import get_engine
 
 
 # ===============================================================
-# DATABASE ENGINE (pyodbc + FreeTDS) — FULLY STREAMLIT SAFE
+# OPENAI CLIENT (cached)
 # ===============================================================
-def get_engine():
-    server = st.secrets["SQL_SERVER_HOST"]
-    database = st.secrets["SQL_SERVER_DB"]
-    username = st.secrets["SQL_SERVER_USER"]
-    password = st.secrets["SQL_SERVER_PASSWORD"]
-
-    # FreeTDS ODBC connection
-    odbc_str = (
-        "DRIVER=FreeTDS;"
-        f"SERVER={server};"
-        "PORT=1433;"
-        f"DATABASE={database};"
-        f"UID={username};"
-        f"PWD={password};"
-        "TDS_Version=7.4;"
-    )
-
-    params = urllib.parse.quote_plus(odbc_str)
-
-    # SQLAlchemy engine
-    engine = create_engine(f"mssql+pyodbc:///?odbc_connect={params}")
-    return engine
-
-
-# ===============================================================
-# OPENAI CLIENT
-# ===============================================================
+@st.cache_resource
 def get_openai_client():
     key = st.secrets.get("OPENAI_API_KEY")
     if not key:
@@ -47,14 +21,15 @@ def get_openai_client():
 
 
 # ===============================================================
-# EMBEDDING
+# EMBEDDING (cached)
 # ===============================================================
-def embed_query(text):
+@st.cache_data(ttl=3600, show_spinner=False)
+def embed_query(text_input: str):
     client = get_openai_client()
 
     res = client.embeddings.create(
         model="text-embedding-3-large",
-        input=text,
+        input=text_input,
     )
 
     return np.array(res.data[0].embedding, dtype="float32")
@@ -71,38 +46,57 @@ def cosine_similarity(a, b):
 
 
 # ===============================================================
-# SEMANTIC SEARCH
+# LOAD EMBEDDINGS FROM DB (cached)
 # ===============================================================
-def semantic_city_search(query, top_k=10, state_filter=None):
-    """
-    Performs semantic search over SQL Server stored embeddings.
-    Returns a list of:  [(city, state), ...]
-    """
-
-    query_vec = embed_query(query)
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_city_embeddings(state_filter: str = None):
+    """Load city embeddings from database, cached for 1 hour."""
     engine = get_engine()
 
-    # ----------------------------------------
-    # Build SQL query
-    # ----------------------------------------
     if state_filter:
         sql = text("""
             SELECT city, state, embedding
             FROM dbo.city_embeddings
-            WHERE state = :state
+            WHERE LOWER(state) = LOWER(:state)
         """)
-        df = pd.read_sql(sql, engine, params={"state": state_filter})
-
+        
+        with engine.connect() as conn:
+            result = conn.execute(sql, {"state": state_filter})
+            rows = result.fetchall()
+            cols = result.keys()
     else:
         sql = text("""
             SELECT city, state, embedding
             FROM dbo.city_embeddings
         """)
-        df = pd.read_sql(sql, engine)
+        
+        with engine.connect() as conn:
+            result = conn.execute(sql)
+            rows = result.fetchall()
+            cols = result.keys()
 
-    # ----------------------------------------
+    return pd.DataFrame(rows, columns=cols)
+
+
+# ===============================================================
+# SEMANTIC SEARCH
+# ===============================================================
+def semantic_city_search(query: str, top_k: int = 10, state_filter: str = None):
+    """
+    Performs semantic search over SQL Server stored embeddings.
+    Returns a list of: [(city, state), ...]
+    """
+
+    # Get query embedding (cached)
+    query_vec = embed_query(query)
+    
+    # Load embeddings from DB (cached)
+    df = load_city_embeddings(state_filter)
+    
+    if df.empty:
+        return []
+
     # Compute similarity
-    # ----------------------------------------
     results = []
 
     for _, row in df.iterrows():
