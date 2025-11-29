@@ -2,6 +2,8 @@
 
 import re
 from .intent_classifier import classify_query_intent
+from lifestyle_rag import try_build_lifestyle_card
+
 
 # Clustering (safe to import at top)
 from .cluster_router import (
@@ -90,12 +92,14 @@ def smart_route(query: str):
     q = query.lower().strip()
     single_best = _is_single_city_question(q)
 
-    # Check for lifestyle-related queries
+    # -------------------------------------------------------
+    # 🔥 LIFESTYLE RAG — Detect lifestyle queries first
+    # -------------------------------------------------------
     if _looks_like_lifestyle_query(q):
-        # Pass the query to lifestyle RAG card builder
         lifestyle_card = try_build_lifestyle_card(query)
         if lifestyle_card:
-            return "lifestyle_query", lifestyle_card
+            return "lifestyle_card", lifestyle_card
+
 
     # -------------------------------------------------------
     # 🔥 ML RANKING: Families
