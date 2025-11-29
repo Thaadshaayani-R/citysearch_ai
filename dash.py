@@ -40,6 +40,30 @@ from core.ml_utils import load_trained_model, load_feature_data
 from mlops.monitoring import run_monitoring
 from mlops.retrain import retrain
 
+import time
+
+# Add this helper at the top of app.py
+def log_time(label, start):
+    elapsed = time.time() - start
+    print(f"⏱️ {label}: {elapsed:.2f}s")
+    return time.time()
+
+if search_clicked and user_query.strip():
+    t = time.time()
+    q = user_query.strip()
+    
+    # Safety checks
+    if is_nonsense_query(q):
+        respond_nonsense()
+    t = log_time("Safety check", t)
+
+    if is_world_query(q):
+        respond_world_not_supported()
+
+    # Two-city comparison
+    two_cities = extract_two_cities(q)
+    t = log_time("Two-city extraction", t)
+
 # -------------------------------------------------
 # CACHED MODEL & DATA LOADING
 # -------------------------------------------------
