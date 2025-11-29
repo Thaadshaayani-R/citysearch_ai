@@ -3,33 +3,29 @@
 import os
 import joblib
 import pandas as pd
+import streamlit as st
 from sqlalchemy import text
 from db_config import get_engine
 
 
 # --------------------------------------------------------
-# MODEL LOADING (cached)
+# CACHED MODEL LOADING
 # --------------------------------------------------------
-
-_model_cache = {"family": None, "young": None, "retirement": None}
 MODEL_PATH = "models"
 
+@st.cache_resource
 def load_model(name: str):
     """Load ML model from models folder, cached."""
-    if _model_cache[name] is None:
-        path = os.path.join(MODEL_PATH, f"{name}_model.pkl")
-        _model_cache[name] = joblib.load(path)
-    return _model_cache[name]
+    path = os.path.join(MODEL_PATH, f"{name}_model.pkl")
+    return joblib.load(path)
 
 
 # --------------------------------------------------------
-# LOAD CITY DATAFRAME SAFELY
+# CACHED CITY DATA
 # --------------------------------------------------------
-
-_city_cache = None
-
-def load_city_df():
-    """Load cities dataframe using SQLAlchemy text query."""
+@st.cache_data(ttl=3600)
+def get_city_df():
+    """Load cities dataframe, cached for 1 hour."""
     engine = get_engine()
 
     query_str = """
@@ -48,14 +44,6 @@ def load_city_df():
     return pd.DataFrame(rows, columns=cols)
 
 
-def get_city_df():
-    """Cache city dataframe."""
-    global _city_cache
-    if _city_cache is None:
-        _city_cache = load_city_df()
-    return _city_cache
-
-
 FEATURE_COLS = [
     "population",
     "median_age",
@@ -67,7 +55,6 @@ FEATURE_COLS = [
 # --------------------------------------------------------
 # STATE EXTRACTION
 # --------------------------------------------------------
-
 US_STATES = [
     "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut",
     "Delaware","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa",
@@ -93,7 +80,6 @@ def extract_state_from_query(query):
 # --------------------------------------------------------
 # APPLY MODEL
 # --------------------------------------------------------
-
 def _apply_model(df, model):
     X = df[FEATURE_COLS]
     df_out = df.copy()
@@ -104,7 +90,6 @@ def _apply_model(df, model):
 # --------------------------------------------------------
 # RANKING FUNCTIONS
 # --------------------------------------------------------
-
 def run_family_ranking(query=None):
     df = get_city_df()
     state = extract_state_from_query(query)
@@ -135,7 +120,6 @@ def run_retirement_ranking(query=None):
 # --------------------------------------------------------
 # SINGLE CITY PREDICTION
 # --------------------------------------------------------
-
 def run_single_city_prediction(city_name):
     df = get_city_df()
     row = df[df["city"].str.lower() == city_name.lower()]
