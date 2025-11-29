@@ -13,10 +13,10 @@ REGISTRY_DIR = "mlops/registry"
 # ===============================================================
 def load_trained_model(model_name="city_clusters"):
     """
-    Loads model + metadata from mlops/registry.
+    Loads model + metadata from the models directory.
     """
-    model_path = os.path.join(REGISTRY_DIR, f"{model_name}.pkl")
-    meta_path = os.path.join(REGISTRY_DIR, f"{model_name}_metadata.json")
+    model_path = os.path.join("models", f"{model_name}.pkl")  # Corrected path
+    meta_path = os.path.join("models", f"{model_name}_metadata.json")  # Corrected path
 
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"❌ Model not found: {model_path}")
@@ -31,6 +31,7 @@ def load_trained_model(model_name="city_clusters"):
             metadata = json.load(f)
 
     return model, metadata
+
 
 
 
