@@ -2,7 +2,7 @@
 
 import re
 from .intent_classifier import classify_query_intent
-from .lifestyle_rag import try_build_lifestyle_card
+from .lifestyle_rag_v2 import try_build_lifestyle_card
 
 
 # Clustering (safe to import at top)
