@@ -81,6 +81,8 @@ Rules:
 # Database fetch
 # -----------------------------------------
 
+# core/lifestyle_rag_v2.py
+
 def get_city_data_from_db(city_name: str):
     engine = get_engine()
 
@@ -94,19 +96,21 @@ def get_city_data_from_db(city_name: str):
             p.description
         FROM dbo.cities AS c
         LEFT JOIN dbo.city_profiles AS p
-            ON c.city = p.city
+            ON c.city = p.city AND c.state = p.state
         WHERE LOWER(c.city) = LOWER(:city)
     """)
 
-
     with engine.connect() as conn:
-        df = pd.read_sql(sql, conn, params={"city": city_name})
+        result = conn.execute(sql, {"city": city_name})
+        rows = result.fetchall()
+        cols = result.keys()
 
-
-    if df.empty:
+    if not rows:
         return None
 
+    df = pd.DataFrame(rows, columns=cols)
     return df.iloc[0].to_dict()
+
 
 
 
