@@ -1,3 +1,5 @@
+#scripts/build_city_embeddings.py
+
 import os
 import json
 import time
