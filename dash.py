@@ -1,3 +1,5 @@
+#dash.py
+
 import os
 import io
 import json
@@ -1076,6 +1078,10 @@ if mode == "Search":
         # First check if lifestyle RAG can answer
         _life_test = try_build_lifestyle_card(q)
         
+        # --- NEW FIX ---
+        # First check if lifestyle RAG can answer
+        _life_test = try_build_lifestyle_card(q)
+
         if _life_test is None:
             # Only run the out-of-scope guard when lifestyle RAG can't handle it
             if not any(word in q_low for word in allowed_keywords):
@@ -1099,11 +1105,45 @@ if mode == "Search":
                 )
                 st.stop()
         else:
-            # If lifestyle RAG recognized the query, show the card immediately
+            # Lifestyle RAG recognized the query — render the card
             lifestyle_card = _life_test
-            # your existing card rendering code goes here
-            ...
+            city = lifestyle_card["city"]
+            state = lifestyle_card["state"]
+            pop = lifestyle_card["population"]
+            median_age = lifestyle_card["median_age"]
+            hh_size = lifestyle_card["avg_household_size"]
+            desc = lifestyle_card["description"]
+            insight = lifestyle_card["ai_summary"]
+
+            card_html = f"""
+            <div class="insight-card">
+              <div class="insight-label">Lifestyle Profile Generated with RAG</div>
+              <div class="insight-title">Life in {city}, {state}</div>
+              <div class="insight-text">{insight}</div>
+            </div>
+            """
+            st.markdown(card_html, unsafe_allow_html=True)
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if pop is not None:
+                    st.metric("Population", f"{pop:,}")
+            with col2:
+                if median_age is not None:
+                    st.metric("Median age", f"{median_age:.1f} years")
+            with col3:
+                if hh_size is not None:
+                    st.metric("Avg household size", f"{hh_size:.2f}")
+
+            if desc:
+                st.markdown("<div class='section-header'>Dataset Description</div>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div class='data-container'>{desc}</div>",
+                    unsafe_allow_html=True,
+                )
+
             st.stop()
+
 
 
         # Initial log entry
