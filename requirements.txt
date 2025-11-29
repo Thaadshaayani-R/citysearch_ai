@@ -1,8 +1,6 @@
 streamlit==1.51.0
 pandas==2.2.2
 numpy==1.26.4
-spacy==3.2.0
-en-core-web-sm==3.8.0
 
 sqlalchemy==1.4.54
 pyodbc==5.1.0
