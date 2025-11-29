@@ -1,130 +1,188 @@
-# core/lifestyle_rag.py
+# core/smart_router.py
 
-import pandas as pd
-import streamlit as st
-from sqlalchemy import text
-from openai import OpenAI
-from db_config import get_engine
+import re
+from .intent_classifier import classify_query_intent
 
+# Clustering (safe to import at top)
+from .cluster_router import (
+    cluster_all,
+    cluster_by_state,
+    cluster_single_city,
+    cluster_similar_to,
+)
 
-# -----------------------------------------
-# OpenAI client
-# -----------------------------------------
-def get_openai_client():
-    key = st.secrets.get("OPENAI_API_KEY")
-    if not key:
-        return None
-    return OpenAI(api_key=key)
+# -------------------------------------------------------------------
+# Helper: extract city name from natural language
+# -------------------------------------------------------------------
+def extract_city_name(q: str):
+    """
+    Extract a clean city name from natural language questions.
 
+    Examples:
+        "Which cluster is Miami in"   -> "Miami"
+        "cluster of Austin"           -> "Austin"
+        "cities like Chicago"         -> "Chicago"
+        "similar cities to Dallas"    -> "Dallas"
+    """
+    q = q.lower().strip()
+    q = q.replace("?", "").replace(".", "")
 
-# -----------------------------------------
-# Query pattern triggers
-# -----------------------------------------
-LIFESTYLE_TRIGGERS = [
-    "tell me about",
-    "what is it like in",
-    "what is life like in",
-    "life in",
-    "living in",
-    "live in",
-]
-
-
-def _extract_city_from_query(query: str):
-    q = query.lower()
-
-    for phrase in LIFESTYLE_TRIGGERS:
-        if phrase in q:
-            part = q.split(phrase)[-1].strip().rstrip("?.!,")
-            return part.title()
-
-    tokens = query.strip().rstrip("?.!,").split()
-    if tokens:
-        return tokens[-1].title()
-    return None
-
-
-def _looks_like_lifestyle_query(query: str):
-    q = query.lower()
-    return any(p in q for p in LIFESTYLE_TRIGGERS)
-
-
-# -----------------------------------------
-# Main RAG builder
-# -----------------------------------------
-def try_build_lifestyle_card(user_query: str):
-
-    if not _looks_like_lifestyle_query(user_query):
-        return None
-
-    city = _extract_city_from_query(user_query)
-    if not city:
-        return None
-
-    # --- SAFE: SQLAlchemy engine ---
-    engine = get_engine()
-
-    sql = text("""
-        SELECT TOP 1
-            c.city,
-            c.state,
-            c.population,
-            c.median_age,
-            c.avg_household_size,
-            p.description
-        FROM dbo.cities AS c
-        LEFT JOIN dbo.city_profiles AS p
-            ON c.city = p.city AND c.state = p.state
-        WHERE LOWER(c.city) = LOWER(:city)
-    """)
-
-    # --- Must use engine.connect() ---
-    with engine.connect() as conn:
-        df = pd.read_sql(sql, conn, params={"city": city})
-
-    if df.empty:
-        return None
-
-    row = df.iloc[0]
-    description = row.get("description") or ""
-
-    # --- RAG ---
-    client = get_openai_client()
-
-    if client is None:
-        ai_summary = "AI lifestyle summary unavailable."
-    else:
-        prompt = f"""
-User question: "{user_query}"
-
-City data:
-City: {row['city']}
-State: {row['state']}
-Population: {row['population']}
-Median age: {row['median_age']}
-Average household size: {row['avg_household_size']}
-
-Lifestyle notes:
-{description}
-
-Write a friendly 2–3 sentence lifestyle summary + 3 bullet points.
-Use only the information above.
-"""
-
-        rsp = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            temperature=0.3,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        ai_summary = rsp.choices[0].message.content.strip()
-
-    return {
-        "city": row["city"],
-        "state": row["state"],
-        "population": int(row["population"]),
-        "median_age": float(row["median_age"]),
-        "avg_household_size": float(row["avg_household_size"]),
-        "description": description,
-        "ai_summary": ai_summary,
+    # Remove common routing terms
+    filter_words = {
+        "cluster", "clusters", "cities", "city",
+        "in", "of", "for", "is", "to", "similar",
+        "like", "best", "which", "what"
     }
+
+    tokens = [t for t in q.split() if t not in filter_words]
+    if not tokens:
+        return None
+
+    city = tokens[-1].strip().title()
+    return city if len(city) > 1 else None
+
+
+# -------------------------------------------------------------------
+# Helper: decide if user wants a SINGLE best city or a LIST
+# -------------------------------------------------------------------
+def _is_single_city_question(q: str) -> bool:
+    q = q.lower()
+    single_phrases = [
+        "which city",
+        "what city",
+        "best city",
+        "single best city",
+        "no of city 1",
+    ]
+    return any(p in q for p in single_phrases)
+
+
+def _is_family_intent(q: str) -> bool:
+    q = q.lower()
+    return ("family" in q) or ("families" in q)
+
+
+def _is_young_intent(q: str) -> bool:
+    q = q.lower()
+    return ("young professional" in q) or ("young professionals" in q) or ("young people" in q)
+
+
+def _is_retirement_intent(q: str) -> bool:
+    q = q.lower()
+    return ("retire" in q) or ("retirement" in q) or ("senior" in q) or ("seniors" in q)
+
+
+# -------------------------------------------------------------------
+# MASTER ROUTER
+# -------------------------------------------------------------------
+def smart_route(query: str):
+    """
+    Master router:
+      - ML ranking (families, young, retirement)
+      - single-city ML scoring
+      - clustering (all, state, single, similar)
+      - fallback for SQL/semantic
+        
+    Returns:
+        (mode, payload)
+    """
+
+    q = query.lower().strip()
+    single_best = _is_single_city_question(q)
+
+    # Check for lifestyle-related queries
+    if _looks_like_lifestyle_query(q):
+        # Pass the query to lifestyle RAG card builder
+        lifestyle_card = try_build_lifestyle_card(query)
+        if lifestyle_card:
+            return "lifestyle_query", lifestyle_card
+
+    # -------------------------------------------------------
+    # 🔥 ML RANKING: Families
+    # -------------------------------------------------------
+    if _is_family_intent(q) and "best" in q:
+        mode_intent, state = classify_query_intent(query)
+        df_rank = run_family_ranking(state)
+
+        if single_best and not df_rank.empty:
+            return "ml_family_single", df_rank.head(1)
+
+        return "ml_family_list", df_rank
+
+    # -------------------------------------------------------
+    # 🔥 ML RANKING: Young Professionals
+    # -------------------------------------------------------
+    if _is_young_intent(q) and "best" in q:
+        mode_intent, state = classify_query_intent(query)
+        df_rank = run_young_ranking(state)
+
+        if single_best and not df_rank.empty:
+            return "ml_young_single", df_rank.head(1)
+
+        return "ml_young_list", df_rank
+
+    # -------------------------------------------------------
+    # 🔥 ML RANKING: Retirement
+    # -------------------------------------------------------
+    if _is_retirement_intent(q) and "best" in q:
+        mode_intent, state = classify_query_intent(query)
+        df_rank = run_retirement_ranking(state)
+
+        if single_best and not df_rank.empty:
+            return "ml_retirement_single", df_rank.head(1)
+
+        return "ml_retirement_list", df_rank
+
+    # -------------------------------------------------------
+    # 🔥 ML — Single-city prediction
+    # -------------------------------------------------------
+    if "score for" in q or "predict" in q:
+        city = extract_city_name(q)
+        if city:
+            info = run_single_city_prediction(city)
+            if info:
+                return "ml_single_city", info
+
+    # -------------------------------------------------------
+    # 🔥 CLUSTERING — All cities
+    # -------------------------------------------------------
+    if (
+        "cluster all" in q
+        or "all clusters" in q
+        or "cluster every city" in q
+        or q.strip() == "cluster all cities"
+    ):
+        return "cluster_all", cluster_all()
+
+    # -------------------------------------------------------
+    # 🔥 CLUSTERING — Cities in a state
+    # -------------------------------------------------------
+    if ("cluster" in q or "group" in q) and "in" in q:
+        parts = q.split("in")
+        state = parts[-1].strip().title()
+        if state:
+            return "cluster_state", cluster_by_state(state)
+
+    # -------------------------------------------------------
+    # 🔥 CLUSTERING — Which cluster is <CITY> in?
+    # -------------------------------------------------------
+    if (
+        "which cluster" in q
+        or ("cluster" in q and ("in" in q or "of" in q or "for" in q))
+    ):
+        city = extract_city_name(q)
+        if city:
+            return "cluster_single", cluster_single_city(city)
+
+    # -------------------------------------------------------
+    # 🔥 CLUSTERING — Similar cities
+    # -------------------------------------------------------
+    if "similar" in q or "like" in q:
+        city = extract_city_name(q)
+        if city:
+            return "cluster_similar", cluster_similar_to(city)
+
+    # -------------------------------------------------------
+    # ❗ FALLBACK → SQL or semantic search
+    # -------------------------------------------------------
+    return None, None
