@@ -77,7 +77,6 @@ Rules:
 # -----------------------------------------
 # Database fetch
 # -----------------------------------------
-from sqlalchemy import text
 
 def get_city_data_from_db(city_name: str):
     engine = get_engine()
