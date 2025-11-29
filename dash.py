@@ -1057,6 +1057,67 @@ if mode == "Search":
                 st.metric("Median Age", f"{df2['median_age']:.1f}")
                 st.metric("Cluster", f"{df2.get('cluster_label', 'N/A')}")
 
+            # -------------------------------------------------
+            # STATE COMPARISON
+            # -------------------------------------------------
+            US_STATES_LIST = [
+                "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+                "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
+                "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana",
+                "maine", "maryland", "massachusetts", "michigan", "minnesota",
+                "mississippi", "missouri", "montana", "nebraska", "nevada",
+                "new hampshire", "new jersey", "new mexico", "new york",
+                "north carolina", "north dakota", "ohio", "oklahoma", "oregon",
+                "pennsylvania", "rhode island", "south carolina", "south dakota",
+                "tennessee", "texas", "utah", "vermont", "virginia", "washington",
+                "west virginia", "wisconsin", "wyoming"
+            ]
+            
+            
+            def extract_two_states(q: str):
+                """Extract exactly two state names from the query."""
+                q_low = q.lower()
+                found = []
+                
+                for state in US_STATES_LIST:
+                    if state in q_low:
+                        found.append(state.title())
+                
+                found = list(set(found))
+                if len(found) == 2:
+                    return found
+                return None
+            
+            
+            def get_state_stats(state_name: str):
+                """Get aggregated stats for a state."""
+                engine = get_engine()
+                
+                sql = text("""
+                    SELECT 
+                        state,
+                        COUNT(*) as city_count,
+                        SUM(population) as total_population,
+                        AVG(population) as avg_population,
+                        AVG(median_age) as avg_median_age,
+                        AVG(avg_household_size) as avg_household_size
+                    FROM dbo.cities
+                    WHERE LOWER(state) = LOWER(:state)
+                    GROUP BY state
+                """)
+                
+                with engine.connect() as conn:
+                    result = conn.execute(sql, {"state": state_name})
+                    rows = result.fetchall()
+                    cols = result.keys()
+                
+                if not rows:
+                    return None
+                
+                df = pd.DataFrame(rows, columns=cols)
+                return df.iloc[0].to_dict()
+
+
             # ----------------------------------------------------
             # ADD AI SUMMARY FOR COMPARISON
             # ----------------------------------------------------
