@@ -78,8 +78,10 @@ Rules:
 # Database fetch
 # -----------------------------------------
 def get_city_data_from_db(city_name: str):
-    """Fetch city profile + stats from the DB."""
-    engine = get_engine()
+    """
+    Query the database to fetch city data based on the city name.
+    """
+    engine = get_engine()  # USE SQLALCHEMY ENGINE — NOT RAW CONNECTION
 
     sql = text("""
         SELECT TOP 1
@@ -91,26 +93,17 @@ def get_city_data_from_db(city_name: str):
             p.description
         FROM dbo.cities AS c
         LEFT JOIN dbo.city_profiles AS p
-          ON c.city = p.city AND c.state = p.state
+            ON c.city = p.city AND c.state = p.state
         WHERE LOWER(c.city) = LOWER(:city)
     """)
 
-    with engine.connect() as conn:
+    with engine.connect() as conn:  # IMPORTANT FIX
         df = pd.read_sql(sql, conn, params={"city": city_name})
 
     if df.empty:
         return None
 
-    row = df.iloc[0]
-
-    return {
-        "city": row["city"],
-        "state": row["state"],
-        "population": int(row["population"]) if row["population"] is not None else None,
-        "median_age": float(row["median_age"]) if row["median_age"] is not None else None,
-        "avg_household_size": float(row["avg_household_size"]) if row["avg_household_size"] is not None else None,
-        "description": row["description"] or "",
-    }
+    return df.iloc[0].to_dict()
 
 
 # -----------------------------------------
