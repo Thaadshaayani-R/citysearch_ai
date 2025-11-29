@@ -47,7 +47,15 @@ def _extract_city_from_query(query: str):
     cities = [ent.text for ent in doc.ents if ent.label_ == "GPE"]  # GPE = Geopolitical Entity
     if cities:
         return cities[0]  # Return the first detected city
+    
+    # Fallback: Use a list of common phrases to extract the city if NER fails
+    q = query.lower()
+    for phrase in LIFESTYLE_TRIGGERS:
+        if phrase in q:
+            part = q.split(phrase)[-1].strip().rstrip("?.!,")
+            return part.title()
     return None  # Return None if no city is detected
+
 
 
 def _looks_like_lifestyle_query(query: str):
@@ -150,10 +158,15 @@ def generate_ai_summary(user_query: str, city_data):
     
     # Get OpenAI client and generate the summary
     client = get_openai_client()
-    response = client.chat.completions.create(
-        model="gpt-4",
-        temperature=0.3,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    
-    return response.choices[0].message.content.strip()
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            temperature=0.3,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        ai_summary = response.choices[0].message.content.strip()
+    except Exception as e:
+        ai_summary = "AI summary unavailable due to an error."
+
+    return ai_summary
+
