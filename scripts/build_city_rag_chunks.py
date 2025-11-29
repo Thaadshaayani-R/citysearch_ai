@@ -1,3 +1,5 @@
+#scripts/build_city_rag_chunks.py
+
 import os
 import json
 import pandas as pd
