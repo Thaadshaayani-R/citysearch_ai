@@ -3,38 +3,38 @@
 import os
 import pickle
 import pandas as pd
+import streamlit as st
 from sqlalchemy import text
 from .cluster_labels import CLUSTER_LABELS
-from db_config import get_engine  # ← Use shared db_config
+from db_config import get_engine
 
 # -----------------------------
-# 1. Load Model + Scaler
+# 1. CACHED Model Loading
 # -----------------------------
-
-MODEL_PATH = os.path.join(os.getcwd(), "models", "city_clusters.pkl")
-
-if not os.path.exists(MODEL_PATH):
-    raise FileNotFoundError(f"❌ Cluster model not found at: {MODEL_PATH}")
-
-try:
+@st.cache_resource
+def load_cluster_model():
+    """Load cluster model once and cache."""
+    MODEL_PATH = os.path.join(os.getcwd(), "models", "city_clusters.pkl")
+    
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(f"❌ Cluster model not found at: {MODEL_PATH}")
+    
     with open(MODEL_PATH, "rb") as f:
         cluster_data = pickle.load(f)
+    
+    return cluster_data["model"], cluster_data["scaler"]
 
-    print("Model loaded successfully.")
-    print("Model keys:", cluster_data.keys())
 
-    kmeans_model = cluster_data["model"]
-    scaler = cluster_data["scaler"]
-
-except Exception as e:
-    print(f"Error loading model: {e}")
-    raise
+# Load once
+kmeans_model, scaler = load_cluster_model()
 
 
 # -----------------------------
-# 2. Load City Data (FIXED)
+# 2. CACHED City Data Loading
 # -----------------------------
+@st.cache_data(ttl=3600)  # Cache for 1 hour
 def load_city_data():
+    """Load city data once and cache."""
     engine = get_engine()
 
     query_str = """
@@ -50,19 +50,15 @@ def load_city_data():
     return pd.DataFrame(rows, columns=cols)
 
 
-# -----------------------------
-# 3. Compute cluster IDs
-# -----------------------------
+# Rest of functions remain the same...
 def add_cluster_labels(df):
     features = df[["population", "median_age", "avg_household_size"]]
     X_scaled = scaler.transform(features)
+    df = df.copy()
     df["cluster_id"] = kmeans_model.predict(X_scaled)
     return df
 
 
-# -----------------------------
-# 4. Add human-friendly names
-# -----------------------------
 def attach_cluster_labels(df):
     df = df.copy()
     df["cluster_name"] = df["cluster_id"].apply(
@@ -71,9 +67,6 @@ def attach_cluster_labels(df):
     return df
 
 
-# -----------------------------
-# 5. Cluster All Cities
-# -----------------------------
 def cluster_all():
     df = load_city_data()
     df = add_cluster_labels(df)
@@ -81,9 +74,6 @@ def cluster_all():
     return df.sort_values("cluster_id")
 
 
-# -----------------------------
-# 6. Cluster by State
-# -----------------------------
 def cluster_by_state(state: str):
     df = load_city_data()
     df = df[df["state"].str.lower() == state.lower()]
@@ -96,9 +86,6 @@ def cluster_by_state(state: str):
     return df.sort_values("cluster_id")
 
 
-# -----------------------------
-# 7. Single City Cluster
-# -----------------------------
 def cluster_single_city(city: str):
     df = load_city_data()
     row = df[df["city"].str.lower() == city.lower()]
@@ -118,9 +105,6 @@ def cluster_single_city(city: str):
     }
 
 
-# -----------------------------
-# 8. Cities Similar to X
-# -----------------------------
 def cluster_similar_to(city: str):
     df = load_city_data()
     df = add_cluster_labels(df)
