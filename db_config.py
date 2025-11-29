@@ -1,21 +1,20 @@
-# db_config.py
-
 import urllib.parse
 from sqlalchemy import create_engine
+from sqlalchemy.pool import QueuePool
 import streamlit as st
 
 
+@st.cache_resource
 def get_engine():
     """
-    Returns a SQLAlchemy Engine using pyodbc + ODBC Driver 17.
-    Streamlit Cloud compatible.
+    Returns a cached SQLAlchemy Engine with connection pooling.
     """
     server = st.secrets["SQL_SERVER_HOST"]
     database = st.secrets["SQL_SERVER_DB"]
 
     username = urllib.parse.quote_plus(st.secrets["SQL_SERVER_USER"])
     password = urllib.parse.quote_plus(st.secrets["SQL_SERVER_PASSWORD"])
-    driver   = urllib.parse.quote_plus(st.secrets["SQL_SERVER_DRIVER"])
+    driver = urllib.parse.quote_plus(st.secrets["SQL_SERVER_DRIVER"])
 
     conn_str = (
         f"mssql+pyodbc://{username}:{password}"
@@ -23,20 +22,18 @@ def get_engine():
         f"?driver={driver}"
     )
 
-    # Debug
-    print("🚀 CONNECTION STRING:", conn_str)
-
     return create_engine(
         conn_str,
+        poolclass=QueuePool,
+        pool_size=5,
+        max_overflow=10,
         pool_pre_ping=True,
+        pool_recycle=3600,
         connect_args={"timeout": 30}
     )
 
 
 def get_connection():
-    """
-    MUST return a DB connection, not the engine.
-    This is required for pandas.read_sql on Streamlit Cloud.
-    """
+    """Return a connection from the pool."""
     engine = get_engine()
     return engine.connect()
