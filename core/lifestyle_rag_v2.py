@@ -6,8 +6,38 @@ import streamlit as st
 from sqlalchemy import text
 from openai import OpenAI
 from db_config import get_engine
+from difflib import get_close_matches
 
-
+def fuzzy_match_city_name(input_city: str, cutoff: float = 0.6) -> str:
+    """Find closest matching city name from database."""
+    if not input_city:
+        return None
+    
+    engine = get_engine()
+    
+    sql = text("SELECT DISTINCT city FROM dbo.cities")
+    
+    with engine.connect() as conn:
+        result = conn.execute(sql)
+        rows = result.fetchall()
+    
+    city_names = [row[0] for row in rows]
+    city_names_lower = [c.lower() for c in city_names]
+    
+    input_lower = input_city.lower().strip()
+    
+    # Exact match first
+    if input_lower in city_names_lower:
+        return city_names[city_names_lower.index(input_lower)]
+    
+    # Fuzzy match
+    matches = get_close_matches(input_lower, city_names_lower, n=1, cutoff=cutoff)
+    
+    if matches:
+        return city_names[city_names_lower.index(matches[0])]
+    
+    return None
+    
 # -----------------------------------------
 # OpenAI client (cached)
 # -----------------------------------------
@@ -115,14 +145,32 @@ Rules:
 # SMART CITY EXTRACTION (fast first, GPT fallback)
 # -----------------------------------------
 def extract_city_smart(query: str):
-    """Try fast regex extraction first, fallback to GPT if needed."""
+    """Try fast regex extraction first, then fuzzy match, then GPT fallback."""
     # Try fast regex first (instant)
     city = extract_city_fast(query)
     if city:
-        return city
+        # Verify it exists or find closest match
+        matched = fuzzy_match_city_name(city, cutoff=0.7)
+        if matched:
+            return matched
     
-    # Fallback to GPT (slower but more accurate)
-    return extract_city_with_gpt(query)
+    # Try fuzzy matching on query words
+    words = query.lower().replace(",", " ").replace(".", " ").replace("?", " ").split()
+    for word in words:
+        if len(word) > 3:
+            matched = fuzzy_match_city_name(word, cutoff=0.7)
+            if matched:
+                return matched
+    
+    # Fallback to GPT
+    city = extract_city_with_gpt(query)
+    if city:
+        # Verify GPT result with fuzzy matching
+        matched = fuzzy_match_city_name(city, cutoff=0.6)
+        if matched:
+            return matched
+    
+    return None
 
 
 # -----------------------------------------
