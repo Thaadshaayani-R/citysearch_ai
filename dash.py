@@ -119,6 +119,51 @@ model, metadata = load_trained_model("city_clusters")  # New line
 df_features = load_feature_data()
 
 
+# -------------------------------------------------
+# MARKDOWN TO HTML CONVERTER
+# -------------------------------------------------
+def convert_markdown_to_html(text: str) -> str:
+    """Convert common Markdown formatting to HTML."""
+    import re
+    
+    # Convert **bold** to <strong>bold</strong>
+    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    
+    # Convert *italic* to <em>italic</em>
+    text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+    
+    # Convert bullet points (lines starting with - or •)
+    lines = text.split('\n')
+    converted_lines = []
+    in_list = False
+    
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('- ') or stripped.startswith('• '):
+            if not in_list:
+                converted_lines.append('<ul style="margin: 0.5rem 0; padding-left: 1.5rem;">')
+                in_list = True
+            item_text = stripped[2:].strip()
+            converted_lines.append(f'<li style="margin: 0.25rem 0;">{item_text}</li>')
+        elif stripped.startswith('* ') and not stripped.startswith('**'):
+            if not in_list:
+                converted_lines.append('<ul style="margin: 0.5rem 0; padding-left: 1.5rem;">')
+                in_list = True
+            item_text = stripped[2:].strip()
+            converted_lines.append(f'<li style="margin: 0.25rem 0;">{item_text}</li>')
+        else:
+            if in_list:
+                converted_lines.append('</ul>')
+                in_list = False
+            if stripped:
+                converted_lines.append(f'<p style="margin: 0.5rem 0;">{stripped}</p>')
+    
+    if in_list:
+        converted_lines.append('</ul>')
+    
+    return '\n'.join(converted_lines)
+
+
 # Dynamic theme styles
 if st.session_state.theme == 'dark':
     bg_main = "#0f1419"
@@ -1268,15 +1313,17 @@ Use your general knowledge about these cities (weather, culture, economy, etc.) 
                     unsafe_allow_html=True
                 )
 
+
             st.markdown(
                 f"""
                 <div class="insight-card">
                     <div class="insight-label">AI-Powered Comparison</div>
-                    <div class="insight-text">{city_insight}</div>
+                    <div class="insight-text">{convert_markdown_to_html(city_insight)}</div>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
+
 
 
             # Download comparison data
@@ -1716,7 +1763,7 @@ IMPORTANT:
                         f"""
                         <div class="insight-card">
                             <div class="insight-label">AI-Powered Comparison</div>
-                            <div class="insight-text">{insight}</div>
+                            <div class="insight-text">{convert_markdown_to_html(insight)}</div>
                         </div>
                         """,
                         unsafe_allow_html=True
