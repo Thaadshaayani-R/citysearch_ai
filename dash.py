@@ -1597,15 +1597,121 @@ Use your general knowledge about these cities (weather, culture, economy, etc.) 
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
-                    # AI Insight & Recommendation
+                    # -------------------------------------------------
+                    # AI Insight & Recommendation (with user's specific question)
+                    # -------------------------------------------------
                     st.markdown("<div class='section-header'>🤖 AI Analysis & Recommendation</div>", unsafe_allow_html=True)
-                    
+
                     with st.spinner("Generating AI analysis..."):
-                        insight = generate_state_comparison_insight(
-                            state1, stats1, cities1,
-                            state2, stats2, cities2
+                        
+                        # Extract any specific question from the user's query
+                        def extract_specific_question_states(query: str, state1: str, state2: str) -> str:
+                            """Extract any specific question beyond the comparison request."""
+                            q_lower = query.lower()
+                            s1 = state1.lower()
+                            s2 = state2.lower()
+                            
+                            # Remove common comparison phrases to find the specific question
+                            remove_phrases = [
+                                f"compare {s1} and {s2}",
+                                f"compare {s2} and {s1}",
+                                f"compare {s1} with {s2}",
+                                f"compare {s2} with {s1}",
+                                f"{s1} vs {s2}",
+                                f"{s2} vs {s1}",
+                                f"{s1} versus {s2}",
+                                f"{s2} versus {s1}",
+                                f"{s1} or {s2}",
+                                f"{s2} or {s1}",
+                                f"which is best {s1} or {s2}",
+                                f"which is better {s1} or {s2}",
+                                f"which is best {s2} or {s1}",
+                                f"which is better {s2} or {s1}",
+                                f"{s1} and {s2}",
+                                f"{s2} and {s1}",
+                            ]
+                            
+                            remaining = q_lower
+                            for phrase in remove_phrases:
+                                remaining = remaining.replace(phrase, "")
+                            
+                            # Clean up
+                            remaining = remaining.strip().strip(".").strip(",").strip("?").strip()
+                            
+                            # If something meaningful remains, it's a specific question
+                            if len(remaining) > 10:
+                                return remaining
+                            return None
+
+                        specific_question = extract_specific_question_states(q, state1, state2)
+                        
+                        # Build the prompt
+                        specific_question_section = ""
+                        if specific_question:
+                            specific_question_section = f"""
+
+**USER'S SPECIFIC QUESTION:**
+The user specifically asked: "{specific_question}"
+Please address this question directly at the BEGINNING of your response before the general comparison.
+"""
+
+                        state_comparison_prompt = f"""
+Compare these two U.S. states based on the data provided:
+
+**{state1}:**
+- Number of cities in database: {int(stats1['city_count'])}
+- Total population: {int(stats1['total_population']):,}
+- Average city population: {int(stats1['avg_population']):,}
+- Average median age: {stats1['avg_median_age']:.1f} years
+- Average household size: {stats1['avg_household_size']:.2f}
+- Top cities: {', '.join(cities1['city'].head(5).tolist())}
+
+**{state2}:**
+- Number of cities in database: {int(stats2['city_count'])}
+- Total population: {int(stats2['total_population']):,}
+- Average city population: {int(stats2['avg_population']):,}
+- Average median age: {stats2['avg_median_age']:.1f} years
+- Average household size: {stats2['avg_household_size']:.2f}
+- Top cities: {', '.join(cities2['city'].head(5).tolist())}
+{specific_question_section}
+
+TASK:
+1. {"FIRST, directly answer the user's specific question: " + specific_question if specific_question else "Write a 2-3 sentence summary comparing both states"}
+2. List 3 key differences as bullet points
+3. Provide recommendations:
+   - Which state is better for families?
+   - Which state is better for young professionals?
+   - Which state is better for retirement?
+4. End with a balanced conclusion
+
+IMPORTANT:
+- Use your general knowledge about these states (weather, climate, cost of living, culture, economy, beaches, outdoor activities, etc.)
+- Keep it concise, friendly, and actionable
+- If asked about weather, provide specific climate information
+"""
+
+                        client = get_openai_client()
+                        if client:
+                            try:
+                                rsp = client.chat.completions.create(
+                                    model="gpt-4.1-mini",
+                                    messages=[{"role": "user", "content": state_comparison_prompt}],
+                                    temperature=0.4,
+                                    max_tokens=600,
+                                )
+                                insight = rsp.choices[0].message.content.strip()
+                            except Exception as e:
+                                insight = f"AI analysis unavailable: {str(e)}"
+                        else:
+                            insight = "AI analysis unavailable - OpenAI client not configured."
+
+                    # Show what question was detected
+                    if specific_question:
+                        st.markdown(
+                            f"<div style='font-size: 0.85rem; color: #a0aec0; margin-bottom: 0.5rem;'>📝 Detected specific question: <em>{specific_question}</em></div>",
+                            unsafe_allow_html=True
                         )
-                    
+
                     st.markdown(
                         f"""
                         <div class="insight-card">
@@ -1615,6 +1721,7 @@ Use your general knowledge about these cities (weather, culture, economy, etc.) 
                         """,
                         unsafe_allow_html=True
                     )
+
 
                     # Download combined data
                     combined_df = pd.DataFrame([
