@@ -1248,6 +1248,168 @@ if mode == "Search":
 
             st.stop()
 
+            # -------------------------------------------------
+            # STATE COMPARISON (e.g., "which is best florida or texas")
+            # -------------------------------------------------
+            if is_state_comparison_query(q):
+                two_states = extract_two_states(q)
+                
+                if two_states:
+                    state1, state2 = two_states
+                    
+                    with st.spinner(f"Comparing {state1} and {state2}..."):
+                        stats1 = get_state_detailed_stats(state1)
+                        stats2 = get_state_detailed_stats(state2)
+                        cities1 = get_top_cities_in_state(state1, limit=5)
+                        cities2 = get_top_cities_in_state(state2, limit=5)
+    
+                    if stats1 and stats2:
+                        # Header
+                        st.markdown(
+                            f"<div class='section-header'>🏆 State Comparison: {state1} vs {state2}</div>",
+                            unsafe_allow_html=True
+                        )
+    
+                        # Side-by-side stats
+                        col1, col2 = st.columns(2)
+    
+                        with col1:
+                            st.markdown(
+                                f"""
+                                <div class="insight-card">
+                                    <div class="insight-label">State Profile</div>
+                                    <div class="insight-title">📍 {state1}</div>
+                                </div>
+                                """,
+                                unsafe_allow_html=True
+                            )
+                            st.metric("Cities in Database", f"{int(stats1['city_count']):,}")
+                            st.metric("Total Population", f"{int(stats1['total_population']):,}")
+                            st.metric("Avg City Population", f"{int(stats1['avg_population']):,}")
+                            st.metric("Avg Median Age", f"{stats1['avg_median_age']:.1f} years")
+                            st.metric("Avg Household Size", f"{stats1['avg_household_size']:.2f}")
+    
+                        with col2:
+                            st.markdown(
+                                f"""
+                                <div class="insight-card">
+                                    <div class="insight-label">State Profile</div>
+                                    <div class="insight-title">📍 {state2}</div>
+                                </div>
+                                """,
+                                unsafe_allow_html=True
+                            )
+                            st.metric("Cities in Database", f"{int(stats2['city_count']):,}")
+                            st.metric("Total Population", f"{int(stats2['total_population']):,}")
+                            st.metric("Avg City Population", f"{int(stats2['avg_population']):,}")
+                            st.metric("Avg Median Age", f"{stats2['avg_median_age']:.1f} years")
+                            st.metric("Avg Household Size", f"{stats2['avg_household_size']:.2f}")
+    
+                        # Top Cities Comparison
+                        st.markdown("<div class='section-header'>🏙️ Top Cities Comparison</div>", unsafe_allow_html=True)
+                        
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.markdown(f"**Top 5 Cities in {state1}**")
+                            st.dataframe(
+                                cities1[["city", "population", "median_age"]].rename(
+                                    columns={"city": "City", "population": "Population", "median_age": "Median Age"}
+                                ),
+                                use_container_width=True,
+                                hide_index=True
+                            )
+                        
+                        with col2:
+                            st.markdown(f"**Top 5 Cities in {state2}**")
+                            st.dataframe(
+                                cities2[["city", "population", "median_age"]].rename(
+                                    columns={"city": "City", "population": "Population", "median_age": "Median Age"}
+                                ),
+                                use_container_width=True,
+                                hide_index=True
+                            )
+    
+                        # Visual Comparison Chart
+                        st.markdown("<div class='section-header'>📊 Visual Comparison</div>", unsafe_allow_html=True)
+                        
+                        comparison_data = pd.DataFrame({
+                            "Metric": ["Total Population (M)", "Avg City Population (K)", "Avg Median Age", "Avg Household Size"],
+                            state1: [
+                                stats1['total_population'] / 1_000_000,
+                                stats1['avg_population'] / 1_000,
+                                stats1['avg_median_age'],
+                                stats1['avg_household_size'] * 10  # Scale for visibility
+                            ],
+                            state2: [
+                                stats2['total_population'] / 1_000_000,
+                                stats2['avg_population'] / 1_000,
+                                stats2['avg_median_age'],
+                                stats2['avg_household_size'] * 10
+                            ]
+                        })
+                        
+                        fig = go.Figure()
+                        fig.add_trace(go.Bar(
+                            name=state1,
+                            x=comparison_data["Metric"],
+                            y=comparison_data[state1],
+                            marker_color='#667eea'
+                        ))
+                        fig.add_trace(go.Bar(
+                            name=state2,
+                            x=comparison_data["Metric"],
+                            y=comparison_data[state2],
+                            marker_color='#764ba2'
+                        ))
+                        fig.update_layout(
+                            barmode='group',
+                            title="State Metrics Comparison",
+                            paper_bgcolor="white",
+                            plot_bgcolor="white",
+                            height=350,
+                            margin=dict(l=10, r=10, t=40, b=10),
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+    
+                        # AI Insight & Recommendation
+                        st.markdown("<div class='section-header'>🤖 AI Analysis & Recommendation</div>", unsafe_allow_html=True)
+                        
+                        with st.spinner("Generating AI analysis..."):
+                            insight = generate_state_comparison_insight(
+                                state1, stats1, cities1,
+                                state2, stats2, cities2
+                            )
+                        
+                        st.markdown(
+                            f"""
+                            <div class="insight-card">
+                                <div class="insight-label">AI-Powered Comparison</div>
+                                <div class="insight-text">{insight}</div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+    
+                        # Download combined data
+                        combined_df = pd.DataFrame([
+                            {"State": state1, **{k: v for k, v in stats1.items() if k != 'state'}},
+                            {"State": state2, **{k: v for k, v in stats2.items() if k != 'state'}},
+                        ])
+                        
+                        csv = convert_df_to_csv(combined_df)
+                        st.download_button(
+                            label="📥 Download Comparison Data",
+                            data=csv,
+                            file_name=f"{state1}_vs_{state2}_comparison.csv",
+                            mime="text/csv",
+                        )
+    
+                        st.stop()
+                    else:
+                        st.warning(f"Could not find data for one or both states: {state1}, {state2}")
+                        st.stop()
+
 
 
 
@@ -1341,169 +1503,6 @@ if mode == "Search":
             detected_mode="received",
             ml_mode="pending"
         )
-
-
-        # -------------------------------------------------
-        # STATE COMPARISON (e.g., "which is best florida or texas")
-        # -------------------------------------------------
-        if is_state_comparison_query(q):
-            two_states = extract_two_states(q)
-            
-            if two_states:
-                state1, state2 = two_states
-                
-                with st.spinner(f"Comparing {state1} and {state2}..."):
-                    stats1 = get_state_detailed_stats(state1)
-                    stats2 = get_state_detailed_stats(state2)
-                    cities1 = get_top_cities_in_state(state1, limit=5)
-                    cities2 = get_top_cities_in_state(state2, limit=5)
-
-                if stats1 and stats2:
-                    # Header
-                    st.markdown(
-                        f"<div class='section-header'>🏆 State Comparison: {state1} vs {state2}</div>",
-                        unsafe_allow_html=True
-                    )
-
-                    # Side-by-side stats
-                    col1, col2 = st.columns(2)
-
-                    with col1:
-                        st.markdown(
-                            f"""
-                            <div class="insight-card">
-                                <div class="insight-label">State Profile</div>
-                                <div class="insight-title">📍 {state1}</div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
-                        st.metric("Cities in Database", f"{int(stats1['city_count']):,}")
-                        st.metric("Total Population", f"{int(stats1['total_population']):,}")
-                        st.metric("Avg City Population", f"{int(stats1['avg_population']):,}")
-                        st.metric("Avg Median Age", f"{stats1['avg_median_age']:.1f} years")
-                        st.metric("Avg Household Size", f"{stats1['avg_household_size']:.2f}")
-
-                    with col2:
-                        st.markdown(
-                            f"""
-                            <div class="insight-card">
-                                <div class="insight-label">State Profile</div>
-                                <div class="insight-title">📍 {state2}</div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
-                        st.metric("Cities in Database", f"{int(stats2['city_count']):,}")
-                        st.metric("Total Population", f"{int(stats2['total_population']):,}")
-                        st.metric("Avg City Population", f"{int(stats2['avg_population']):,}")
-                        st.metric("Avg Median Age", f"{stats2['avg_median_age']:.1f} years")
-                        st.metric("Avg Household Size", f"{stats2['avg_household_size']:.2f}")
-
-                    # Top Cities Comparison
-                    st.markdown("<div class='section-header'>🏙️ Top Cities Comparison</div>", unsafe_allow_html=True)
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.markdown(f"**Top 5 Cities in {state1}**")
-                        st.dataframe(
-                            cities1[["city", "population", "median_age"]].rename(
-                                columns={"city": "City", "population": "Population", "median_age": "Median Age"}
-                            ),
-                            use_container_width=True,
-                            hide_index=True
-                        )
-                    
-                    with col2:
-                        st.markdown(f"**Top 5 Cities in {state2}**")
-                        st.dataframe(
-                            cities2[["city", "population", "median_age"]].rename(
-                                columns={"city": "City", "population": "Population", "median_age": "Median Age"}
-                            ),
-                            use_container_width=True,
-                            hide_index=True
-                        )
-
-                    # Visual Comparison Chart
-                    st.markdown("<div class='section-header'>📊 Visual Comparison</div>", unsafe_allow_html=True)
-                    
-                    comparison_data = pd.DataFrame({
-                        "Metric": ["Total Population (M)", "Avg City Population (K)", "Avg Median Age", "Avg Household Size"],
-                        state1: [
-                            stats1['total_population'] / 1_000_000,
-                            stats1['avg_population'] / 1_000,
-                            stats1['avg_median_age'],
-                            stats1['avg_household_size'] * 10  # Scale for visibility
-                        ],
-                        state2: [
-                            stats2['total_population'] / 1_000_000,
-                            stats2['avg_population'] / 1_000,
-                            stats2['avg_median_age'],
-                            stats2['avg_household_size'] * 10
-                        ]
-                    })
-                    
-                    fig = go.Figure()
-                    fig.add_trace(go.Bar(
-                        name=state1,
-                        x=comparison_data["Metric"],
-                        y=comparison_data[state1],
-                        marker_color='#667eea'
-                    ))
-                    fig.add_trace(go.Bar(
-                        name=state2,
-                        x=comparison_data["Metric"],
-                        y=comparison_data[state2],
-                        marker_color='#764ba2'
-                    ))
-                    fig.update_layout(
-                        barmode='group',
-                        title="State Metrics Comparison",
-                        paper_bgcolor="white",
-                        plot_bgcolor="white",
-                        height=350,
-                        margin=dict(l=10, r=10, t=40, b=10),
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    # AI Insight & Recommendation
-                    st.markdown("<div class='section-header'>🤖 AI Analysis & Recommendation</div>", unsafe_allow_html=True)
-                    
-                    with st.spinner("Generating AI analysis..."):
-                        insight = generate_state_comparison_insight(
-                            state1, stats1, cities1,
-                            state2, stats2, cities2
-                        )
-                    
-                    st.markdown(
-                        f"""
-                        <div class="insight-card">
-                            <div class="insight-label">AI-Powered Comparison</div>
-                            <div class="insight-text">{insight}</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-
-                    # Download combined data
-                    combined_df = pd.DataFrame([
-                        {"State": state1, **{k: v for k, v in stats1.items() if k != 'state'}},
-                        {"State": state2, **{k: v for k, v in stats2.items() if k != 'state'}},
-                    ])
-                    
-                    csv = convert_df_to_csv(combined_df)
-                    st.download_button(
-                        label="📥 Download Comparison Data",
-                        data=csv,
-                        file_name=f"{state1}_vs_{state2}_comparison.csv",
-                        mime="text/csv",
-                    )
-
-                    st.stop()
-                else:
-                    st.warning(f"Could not find data for one or both states: {state1}, {state2}")
-                    st.stop()
 
 
         # ---------------------------------------------
