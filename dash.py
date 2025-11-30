@@ -1029,33 +1029,228 @@ if mode == "Search":
             return None
 
 
+        # -------------------------------------------------
+        # TWO-CITY COMPARISON (e.g., "Denver vs Dallas")
+        # -------------------------------------------------
         two_cities = extract_two_cities(q)
 
         if two_cities:
             city1, city2 = two_cities
 
-            # Get from ML feature dataset (NOT SQL)
-            df1 = df_features[df_features["city"].str.lower() == city1].iloc[0]
-            df2 = df_features[df_features["city"].str.lower() == city2].iloc[0]
+            # Get city data from features DataFrame
+            df1_row = df_features[df_features["city"].str.lower() == city1.lower()]
+            df2_row = df_features[df_features["city"].str.lower() == city2.lower()]
 
-            st.markdown("<div class='section-header'>City Comparison</div>", unsafe_allow_html=True)
+            if df1_row.empty or df2_row.empty:
+                st.warning("Could not find data for one or both cities.")
+                st.stop()
 
-            c1, c2 = st.columns(2)
+            df1 = df1_row.iloc[0]
+            df2 = df2_row.iloc[0]
 
-            # ---- CITY 1 ----
-            with c1:
-                st.subheader(df1["city"])
-                st.metric("Population", f"{df1['population']:,}")
-                st.metric("Median Age", f"{df1['median_age']:.1f}")
-                st.metric("Cluster", f"{df1.get('cluster_label', 'N/A')}")
+            # Header
+            st.markdown(
+                f"<div class='section-header'>🏆 City Comparison: {df1['city']} vs {df2['city']}</div>",
+                unsafe_allow_html=True
+            )
 
+            # Side-by-side City Profiles
+            col1, col2 = st.columns(2)
 
-            # ---- CITY 2 ----
-            with c2:
-                st.subheader(df2["city"])
-                st.metric("Population", f"{df2['population']:,}")
-                st.metric("Median Age", f"{df2['median_age']:.1f}")
-                st.metric("Cluster", f"{df2.get('cluster_label', 'N/A')}")
+            with col1:
+                st.markdown(
+                    f"""
+                    <div class="insight-card">
+                        <div class="insight-label">City Profile</div>
+                        <div class="insight-title">📍 {df1['city']}, {df1['state']}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                st.metric("Population", f"{int(df1['population']):,}")
+                st.metric("Median Age", f"{df1['median_age']:.1f} years")
+                st.metric("Avg Household Size", f"{df1['avg_household_size']:.2f}")
+                if 'cluster_label' in df1 and pd.notna(df1.get('cluster_label')):
+                    st.metric("Cluster", f"{int(df1['cluster_label'])}")
+                if 'lifestyle_score' in df1 and pd.notna(df1.get('lifestyle_score')):
+                    st.metric("Lifestyle Score", f"{df1['lifestyle_score']:.3f}")
+
+            with col2:
+                st.markdown(
+                    f"""
+                    <div class="insight-card">
+                        <div class="insight-label">City Profile</div>
+                        <div class="insight-title">📍 {df2['city']}, {df2['state']}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                st.metric("Population", f"{int(df2['population']):,}")
+                st.metric("Median Age", f"{df2['median_age']:.1f} years")
+                st.metric("Avg Household Size", f"{df2['avg_household_size']:.2f}")
+                if 'cluster_label' in df2 and pd.notna(df2.get('cluster_label')):
+                    st.metric("Cluster", f"{int(df2['cluster_label'])}")
+                if 'lifestyle_score' in df2 and pd.notna(df2.get('lifestyle_score')):
+                    st.metric("Lifestyle Score", f"{df2['lifestyle_score']:.3f}")
+
+            # Visual Comparison Chart
+            st.markdown("<div class='section-header'>📊 Visual Comparison</div>", unsafe_allow_html=True)
+
+            # Normalize values for comparison
+            max_pop = max(df1['population'], df2['population'])
+            
+            comparison_data = pd.DataFrame({
+                "Metric": ["Population (scaled)", "Median Age", "Household Size (x10)"],
+                df1['city']: [
+                    (df1['population'] / max_pop) * 100,  # Scale to percentage
+                    df1['median_age'],
+                    df1['avg_household_size'] * 10  # Scale for visibility
+                ],
+                df2['city']: [
+                    (df2['population'] / max_pop) * 100,
+                    df2['median_age'],
+                    df2['avg_household_size'] * 10
+                ]
+            })
+
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                name=df1['city'],
+                x=comparison_data["Metric"],
+                y=comparison_data[df1['city']],
+                marker_color='#667eea'
+            ))
+            fig.add_trace(go.Bar(
+                name=df2['city'],
+                x=comparison_data["Metric"],
+                y=comparison_data[df2['city']],
+                marker_color='#764ba2'
+            ))
+            fig.update_layout(
+                barmode='group',
+                title="City Metrics Comparison",
+                paper_bgcolor="white",
+                plot_bgcolor="white",
+                height=350,
+                margin=dict(l=10, r=10, t=40, b=10),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Radar Chart for Lifestyle Indexes (if available)
+            if all(col in df1.index for col in ['opportunity_index', 'youth_index', 'family_index']):
+                st.markdown("<div class='section-header'>🎯 Lifestyle Profile Comparison</div>", unsafe_allow_html=True)
+                
+                categories = ["Opportunity", "Youth", "Family"]
+                
+                fig_radar = go.Figure()
+                
+                fig_radar.add_trace(go.Scatterpolar(
+                    r=[df1.get('opportunity_index', 0), df1.get('youth_index', 0), df1.get('family_index', 0)],
+                    theta=categories,
+                    fill='toself',
+                    name=df1['city'],
+                    line_color='#667eea'
+                ))
+                
+                fig_radar.add_trace(go.Scatterpolar(
+                    r=[df2.get('opportunity_index', 0), df2.get('youth_index', 0), df2.get('family_index', 0)],
+                    theta=categories,
+                    fill='toself',
+                    name=df2['city'],
+                    line_color='#764ba2'
+                ))
+                
+                fig_radar.update_layout(
+                    polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
+                    showlegend=True,
+                    title="Lifestyle Index Comparison",
+                    paper_bgcolor="white",
+                    height=350,
+                    margin=dict(l=40, r=40, t=40, b=40),
+                )
+                st.plotly_chart(fig_radar, use_container_width=True)
+
+            # AI Analysis & Recommendation
+            st.markdown("<div class='section-header'>🤖 AI Analysis & Recommendation</div>", unsafe_allow_html=True)
+
+            with st.spinner("Generating AI analysis..."):
+                city_comparison_prompt = f"""
+Compare these two U.S. cities based on the data provided:
+
+**{df1['city']}, {df1['state']}:**
+- Population: {int(df1['population']):,}
+- Median Age: {df1['median_age']:.1f} years
+- Average Household Size: {df1['avg_household_size']:.2f}
+
+**{df2['city']}, {df2['state']}:**
+- Population: {int(df2['population']):,}
+- Median Age: {df2['median_age']:.1f} years
+- Average Household Size: {df2['avg_household_size']:.2f}
+
+TASK:
+1. Write a 2-3 sentence summary comparing both cities
+2. List 3 key differences as bullet points
+3. Provide recommendations:
+   - Which city is better for families?
+   - Which city is better for young professionals?
+   - Which city is better for retirement?
+4. End with a balanced conclusion about which city might be "best" depending on priorities
+
+Keep it concise, friendly, and actionable.
+"""
+                client = get_openai_client()
+                if client:
+                    try:
+                        rsp = client.chat.completions.create(
+                            model="gpt-4.1-mini",
+                            messages=[{"role": "user", "content": city_comparison_prompt}],
+                            temperature=0.4,
+                            max_tokens=500,
+                        )
+                        city_insight = rsp.choices[0].message.content.strip()
+                    except Exception as e:
+                        city_insight = f"AI analysis unavailable: {str(e)}"
+                else:
+                    city_insight = "AI analysis unavailable - OpenAI client not configured."
+
+            st.markdown(
+                f"""
+                <div class="insight-card">
+                    <div class="insight-label">AI-Powered Comparison</div>
+                    <div class="insight-text">{city_insight}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            # Download comparison data
+            comparison_df = pd.DataFrame([
+                {
+                    "City": df1['city'],
+                    "State": df1['state'],
+                    "Population": df1['population'],
+                    "Median Age": df1['median_age'],
+                    "Avg Household Size": df1['avg_household_size'],
+                },
+                {
+                    "City": df2['city'],
+                    "State": df2['state'],
+                    "Population": df2['population'],
+                    "Median Age": df2['median_age'],
+                    "Avg Household Size": df2['avg_household_size'],
+                }
+            ])
+
+            csv = convert_df_to_csv(comparison_df)
+            st.download_button(
+                label="📥 Download Comparison Data",
+                data=csv,
+                file_name=f"{df1['city']}_vs_{df2['city']}_comparison.csv",
+                mime="text/csv",
+            )
+
+            st.stop()
+
 
         # -------------------------------------------------
         # STATE COMPARISON FEATURE
