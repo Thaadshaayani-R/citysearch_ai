@@ -234,7 +234,52 @@ def correct_query_spelling(query: str) -> tuple:
     """
     Correct spelling mistakes in the query for states and cities.
     Returns: (corrected_query, list_of_corrections)
+    
+    IMPORTANT: Only corrects words that look like misspelled city/state names,
+    NOT common English words.
     """
+    
+    # Words that should NEVER be auto-corrected (common English words)
+    PROTECTED_WORDS = {
+        # Query keywords
+        "best", "worst", "good", "bad", "top", "bottom", "most", "least",
+        "compare", "comparison", "versus", "between", "which", "what", "where",
+        "city", "cities", "state", "states", "country", "countries",
+        "population", "median", "average", "household", "size", "age",
+        
+        # Demographics
+        "young", "old", "older", "younger", "family", "families", "senior", "seniors",
+        "professional", "professionals", "student", "students", "retired", "retiree",
+        "retirement", "children", "kids", "adults", "people", "person",
+        
+        # Descriptors
+        "large", "small", "big", "little", "high", "low", "cheap", "expensive",
+        "affordable", "safe", "dangerous", "friendly", "beautiful", "nice",
+        "growing", "declining", "urban", "rural", "suburban", "coastal",
+        
+        # Weather/Climate
+        "weather", "climate", "warm", "cold", "hot", "cool", "sunny", "rainy",
+        "humid", "dry", "snow", "beach", "mountain", "desert",
+        
+        # Economy/Jobs
+        "jobs", "job", "work", "employment", "economy", "economic", "business",
+        "industry", "tech", "technology", "healthcare", "education",
+        
+        # Lifestyle
+        "life", "living", "lifestyle", "live", "move", "moving", "relocate",
+        "similar", "like", "cluster", "group", "category", "type",
+        
+        # Actions
+        "show", "find", "search", "list", "give", "tell", "about", "information",
+        "score", "rank", "ranking", "rated", "rating",
+        
+        # Common words
+        "the", "and", "for", "with", "from", "into", "over", "under",
+        "how", "many", "much", "more", "less", "than", "that", "this",
+        "are", "is", "was", "were", "been", "being", "have", "has", "had",
+        "all", "any", "some", "every", "each", "both", "other", "another",
+    }
+    
     corrections = []
     corrected_query = query
     words = query.split()
@@ -243,7 +288,6 @@ def correct_query_spelling(query: str) -> tuple:
     city_names_lower = [c.lower() for c in city_names]
     state_names_lower = [s.lower() for s in US_STATES_FULL]
     
-    # Process each word
     i = 0
     while i < len(words):
         word = words[i]
@@ -254,48 +298,64 @@ def correct_query_spelling(query: str) -> tuple:
             i += 1
             continue
         
-        # Skip if it's already a valid city or state
+        # Skip protected words
+        if word_clean in PROTECTED_WORDS:
+            i += 1
+            continue
+        
+        # Skip if it's already a valid city or state (exact match)
         if word_clean in city_names_lower or word_clean in state_names_lower:
             i += 1
             continue
         
         # Check two-word combinations first (New York, North Carolina, etc.)
         if i < len(words) - 1:
-            two_word = f"{word_clean} {words[i+1].lower().strip('.,?!;:')}"
-            matched_state = fuzzy_match_state(two_word, cutoff=0.8)
-            if matched_state and matched_state.lower() != two_word:
-                original = f"{word} {words[i+1]}"
-                corrections.append((original.strip(".,?!;:'\""), matched_state))
-                corrected_query = corrected_query.replace(original.strip(".,?!;:'\""), matched_state, 1)
-                i += 2
-                continue
+            next_word = words[i+1].lower().strip(".,?!;:'\"")
+            two_word = f"{word_clean} {next_word}"
+            
+            # Skip if either word is protected
+            if word_clean in PROTECTED_WORDS or next_word in PROTECTED_WORDS:
+                pass  # Don't try two-word match
+            else:
+                matched_state = fuzzy_match_state(two_word, cutoff=0.85)  # Higher cutoff
+                if matched_state and matched_state.lower() != two_word:
+                    original = f"{word} {words[i+1]}"
+                    corrections.append((original.strip(".,?!;:'\""), matched_state))
+                    corrected_query = corrected_query.replace(original.strip(".,?!;:'\""), matched_state, 1)
+                    i += 2
+                    continue
         
-        # Try single word - state match
-        matched_state = fuzzy_match_state(word_clean, cutoff=0.7)
-        if matched_state and matched_state.lower() != word_clean:
-            corrections.append((word_clean, matched_state))
-            # Replace preserving punctuation
-            for original_word in words:
-                if word_clean in original_word.lower():
-                    corrected_query = corrected_query.replace(word_clean, matched_state.lower(), 1)
-                    corrected_query = corrected_query.replace(word_clean.title(), matched_state, 1)
-                    break
+        # Only try fuzzy matching if the word LOOKS like a city/state name
+        # (starts with capital letter in original, or is reasonably long)
+        should_try_fuzzy = (
+            word[0].isupper() or  # Capitalized
+            len(word_clean) >= 6   # Long enough to be a place name
+        )
+        
+        if not should_try_fuzzy:
             i += 1
             continue
         
-        # Try single word - city match
-        matched_city = fuzzy_match_city(word_clean, cutoff=0.7)
+        # Try single word - state match (high cutoff)
+        matched_state = fuzzy_match_state(word_clean, cutoff=0.8)
+        if matched_state and matched_state.lower() != word_clean:
+            corrections.append((word_clean, matched_state))
+            corrected_query = corrected_query.replace(word, matched_state, 1)
+            i += 1
+            continue
+        
+        # Try single word - city match (high cutoff)
+        matched_city = fuzzy_match_city(word_clean, cutoff=0.8)
         if matched_city and matched_city.lower() != word_clean:
             corrections.append((word_clean, matched_city))
-            for original_word in words:
-                if word_clean in original_word.lower():
-                    corrected_query = corrected_query.replace(word_clean, matched_city.lower(), 1)
-                    corrected_query = corrected_query.replace(word_clean.title(), matched_city, 1)
-                    break
+            corrected_query = corrected_query.replace(word, matched_city, 1)
+            i += 1
+            continue
         
         i += 1
     
     return corrected_query, corrections
+
 
 
 def extract_two_states_fuzzy(q: str):
