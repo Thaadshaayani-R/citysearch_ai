@@ -1170,10 +1170,56 @@ if mode == "Search":
                 )
                 st.plotly_chart(fig_radar, use_container_width=True)
 
-            # AI Analysis & Recommendation
+            # -------------------------------------------------
+            # AI Analysis & Recommendation (with user's specific question)
+            # -------------------------------------------------
             st.markdown("<div class='section-header'>🤖 AI Analysis & Recommendation</div>", unsafe_allow_html=True)
 
             with st.spinner("Generating AI analysis..."):
+                
+                # Extract any specific question from the user's query
+                def extract_specific_question(query: str, city1: str, city2: str) -> str:
+                    """Extract any specific question beyond the comparison request."""
+                    q_lower = query.lower()
+                    
+                    # Remove common comparison phrases to find the specific question
+                    remove_phrases = [
+                        f"compare {city1.lower()} and {city2.lower()}",
+                        f"compare {city2.lower()} and {city1.lower()}",
+                        f"{city1.lower()} vs {city2.lower()}",
+                        f"{city2.lower()} vs {city1.lower()}",
+                        f"{city1.lower()} versus {city2.lower()}",
+                        f"{city2.lower()} versus {city1.lower()}",
+                        f"{city1.lower()} or {city2.lower()}",
+                        f"{city2.lower()} or {city1.lower()}",
+                        f"which is best {city1.lower()} or {city2.lower()}",
+                        f"which is better {city1.lower()} or {city2.lower()}",
+                    ]
+                    
+                    remaining = q_lower
+                    for phrase in remove_phrases:
+                        remaining = remaining.replace(phrase, "")
+                    
+                    # Clean up
+                    remaining = remaining.strip().strip(".").strip(",").strip()
+                    
+                    # If something meaningful remains, it's a specific question
+                    if len(remaining) > 10:
+                        return remaining
+                    return None
+
+                specific_question = extract_specific_question(q, df1['city'], df2['city'])
+                
+                # Build the prompt
+                specific_question_section = ""
+                if specific_question:
+                    specific_question_section = f"""
+
+**USER'S SPECIFIC QUESTION:**
+The user specifically asked: "{specific_question}"
+Please address this question directly at the beginning of your response.
+"""
+
                 city_comparison_prompt = f"""
 Compare these two U.S. cities based on the data provided:
 
@@ -1186,17 +1232,19 @@ Compare these two U.S. cities based on the data provided:
 - Population: {int(df2['population']):,}
 - Median Age: {df2['median_age']:.1f} years
 - Average Household Size: {df2['avg_household_size']:.2f}
+{specific_question_section}
 
 TASK:
-1. Write a 2-3 sentence summary comparing both cities
+1. {"First, directly answer the user's specific question about " + specific_question if specific_question else "Write a 2-3 sentence summary comparing both cities"}
 2. List 3 key differences as bullet points
 3. Provide recommendations:
    - Which city is better for families?
    - Which city is better for young professionals?
    - Which city is better for retirement?
-4. End with a balanced conclusion about which city might be "best" depending on priorities
+4. End with a balanced conclusion
 
 Keep it concise, friendly, and actionable.
+Use your general knowledge about these cities (weather, culture, economy, etc.) to provide a complete answer.
 """
                 client = get_openai_client()
                 if client:
@@ -1205,13 +1253,20 @@ Keep it concise, friendly, and actionable.
                             model="gpt-4.1-mini",
                             messages=[{"role": "user", "content": city_comparison_prompt}],
                             temperature=0.4,
-                            max_tokens=500,
+                            max_tokens=600,  # Increased for longer response
                         )
                         city_insight = rsp.choices[0].message.content.strip()
                     except Exception as e:
                         city_insight = f"AI analysis unavailable: {str(e)}"
                 else:
                     city_insight = "AI analysis unavailable - OpenAI client not configured."
+
+            # Show what question was detected (optional - for debugging)
+            if specific_question:
+                st.markdown(
+                    f"<div style='font-size: 0.85rem; color: #a0aec0; margin-bottom: 0.5rem;'>📝 Detected specific question: <em>{specific_question}</em></div>",
+                    unsafe_allow_html=True
+                )
 
             st.markdown(
                 f"""
@@ -1222,6 +1277,7 @@ Keep it concise, friendly, and actionable.
                 """,
                 unsafe_allow_html=True
             )
+
 
             # Download comparison data
             comparison_df = pd.DataFrame([
