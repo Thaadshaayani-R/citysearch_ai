@@ -1058,7 +1058,7 @@ if mode == "Search":
                 st.metric("Cluster", f"{df2.get('cluster_label', 'N/A')}")
 
             # -------------------------------------------------
-            # STATE COMPARISON
+            # STATE COMPARISON FEATURE
             # -------------------------------------------------
             US_STATES_LIST = [
                 "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
@@ -1089,8 +1089,19 @@ if mode == "Search":
                 return None
             
             
-            def get_state_stats(state_name: str):
-                """Get aggregated stats for a state."""
+            def is_state_comparison_query(q: str):
+                """Check if query is comparing states."""
+                q_low = q.lower()
+                comparison_words = ["best", "better", "compare", "vs", "versus", "or", "comparison"]
+                has_comparison = any(word in q_low for word in comparison_words)
+                
+                states_found = extract_two_states(q)
+                return has_comparison and states_found is not None
+            
+            
+            @st.cache_data(ttl=3600, show_spinner=False)
+            def get_state_detailed_stats(state_name: str):
+                """Get comprehensive stats for a state."""
                 engine = get_engine()
                 
                 sql = text("""
@@ -1099,7 +1110,11 @@ if mode == "Search":
                         COUNT(*) as city_count,
                         SUM(population) as total_population,
                         AVG(population) as avg_population,
+                        MIN(population) as min_population,
+                        MAX(population) as max_population,
                         AVG(median_age) as avg_median_age,
+                        MIN(median_age) as min_median_age,
+                        MAX(median_age) as max_median_age,
                         AVG(avg_household_size) as avg_household_size
                     FROM dbo.cities
                     WHERE LOWER(state) = LOWER(:state)
@@ -1110,6 +1125,96 @@ if mode == "Search":
                     result = conn.execute(sql, {"state": state_name})
                     rows = result.fetchall()
                     cols = result.keys()
+                
+                if not rows:
+                    return None
+                
+                df = pd.DataFrame(rows, columns=cols)
+                return df.iloc[0].to_dict()
+            
+            
+            @st.cache_data(ttl=3600, show_spinner=False)
+            def get_top_cities_in_state(state_name: str, limit: int = 5):
+                """Get top cities by population in a state."""
+                engine = get_engine()
+                
+                sql = text("""
+                    SELECT TOP(:limit)
+                        city,
+                        state,
+                        population,
+                        median_age,
+                        avg_household_size
+                    FROM dbo.cities
+                    WHERE LOWER(state) = LOWER(:state)
+                    ORDER BY population DESC
+                """)
+                
+                with engine.connect() as conn:
+                    result = conn.execute(sql, {"state": state_name, "limit": limit})
+                    rows = result.fetchall()
+                    cols = result.keys()
+                
+                return pd.DataFrame(rows, columns=cols)
+            
+            
+            def generate_state_comparison_insight(state1: str, stats1: dict, cities1: pd.DataFrame,
+                                                   state2: str, stats2: dict, cities2: pd.DataFrame):
+                """Generate AI-powered comparison insight between two states."""
+                client = get_openai_client()
+                if client is None:
+                    return "AI comparison unavailable."
+                
+                prompt = f"""
+            Compare these two U.S. states based on the data provided:
+            
+            **{state1}:**
+            - Number of cities: {int(stats1['city_count'])}
+            - Total population: {int(stats1['total_population']):,}
+            - Average city population: {int(stats1['avg_population']):,}
+            - Average median age: {stats1['avg_median_age']:.1f} years
+            - Average household size: {stats1['avg_household_size']:.2f}
+            - Top cities: {', '.join(cities1['city'].head(5).tolist())}
+            
+            **{state2}:**
+            - Number of cities: {int(stats2['city_count'])}
+            - Total population: {int(stats2['total_population']):,}
+            - Average city population: {int(stats2['avg_population']):,}
+            - Average median age: {stats2['avg_median_age']:.1f} years
+            - Average household size: {stats2['avg_household_size']:.2f}
+            - Top cities: {', '.join(cities2['city'].head(5).tolist())}
+            
+            TASK:
+            1. Write a 2-3 sentence summary comparing both states
+            2. List 3 key differences as bullet points
+            3. Provide a recommendation:
+               - Which state is better for families?
+               - Which state is better for young professionals?
+               - Which state is better for retirement?
+            4. End with a balanced conclusion
+            
+            Keep it concise, friendly, and actionable.
+            """
+            
+                try:
+                    rsp = client.chat.completions.create(
+                        model="gpt-4.1-mini",
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.4,
+                        max_tokens=500,
+                    )
+                    return rsp.choices[0].message.content.strip()
+                except Exception as e:
+                    return f"AI comparison unavailable: {str(e)}"
+            
+            
+            def get_openai_client():
+                """Get OpenAI client."""
+                key = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+                if not key:
+                    return None
+                return OpenAI(api_key=key)
+
                 
                 if not rows:
                     return None
