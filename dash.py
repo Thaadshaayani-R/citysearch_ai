@@ -163,6 +163,271 @@ def convert_markdown_to_html(text: str) -> str:
     
     return '\n'.join(converted_lines)
 
+# -------------------------------------------------
+# GLOBAL FUZZY MATCHING FOR STATES AND CITIES
+# -------------------------------------------------
+from difflib import get_close_matches
+
+US_STATES_FULL = [
+    "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
+    "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho",
+    "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana",
+    "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota",
+    "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada",
+    "New Hampshire", "New Jersey", "New Mexico", "New York",
+    "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon",
+    "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
+    "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington",
+    "West Virginia", "Wisconsin", "Wyoming"
+]
+
+
+def fuzzy_match_state(input_state: str, cutoff: float = 0.6) -> str:
+    """Find the closest matching state name."""
+    if not input_state:
+        return None
+    
+    input_lower = input_state.lower().strip()
+    
+    # Exact match first
+    for state in US_STATES_FULL:
+        if state.lower() == input_lower:
+            return state
+    
+    # Fuzzy match
+    state_names_lower = [s.lower() for s in US_STATES_FULL]
+    matches = get_close_matches(input_lower, state_names_lower, n=1, cutoff=cutoff)
+    
+    if matches:
+        matched_index = state_names_lower.index(matches[0])
+        return US_STATES_FULL[matched_index]
+    
+    return None
+
+
+def fuzzy_match_city(input_city: str, cutoff: float = 0.6) -> str:
+    """Find the closest matching city name from df_features."""
+    if not input_city:
+        return None
+    
+    input_lower = input_city.lower().strip()
+    
+    city_names = df_features["city"].unique().tolist()
+    city_names_lower = [c.lower() for c in city_names]
+    
+    # Exact match first
+    if input_lower in city_names_lower:
+        matched_index = city_names_lower.index(input_lower)
+        return city_names[matched_index]
+    
+    # Fuzzy match
+    matches = get_close_matches(input_lower, city_names_lower, n=1, cutoff=cutoff)
+    
+    if matches:
+        matched_index = city_names_lower.index(matches[0])
+        return city_names[matched_index]
+    
+    return None
+
+
+def correct_query_spelling(query: str) -> tuple:
+    """
+    Correct spelling mistakes in the query for states and cities.
+    Returns: (corrected_query, list_of_corrections)
+    """
+    corrections = []
+    corrected_query = query
+    words = query.split()
+    
+    city_names = df_features["city"].unique().tolist()
+    city_names_lower = [c.lower() for c in city_names]
+    state_names_lower = [s.lower() for s in US_STATES_FULL]
+    
+    # Process each word
+    i = 0
+    while i < len(words):
+        word = words[i]
+        word_clean = word.lower().strip(".,?!;:'\"")
+        
+        # Skip short words
+        if len(word_clean) <= 3:
+            i += 1
+            continue
+        
+        # Skip if it's already a valid city or state
+        if word_clean in city_names_lower or word_clean in state_names_lower:
+            i += 1
+            continue
+        
+        # Check two-word combinations first (New York, North Carolina, etc.)
+        if i < len(words) - 1:
+            two_word = f"{word_clean} {words[i+1].lower().strip('.,?!;:')}"
+            matched_state = fuzzy_match_state(two_word, cutoff=0.8)
+            if matched_state and matched_state.lower() != two_word:
+                original = f"{word} {words[i+1]}"
+                corrections.append((original.strip(".,?!;:'\""), matched_state))
+                corrected_query = corrected_query.replace(original.strip(".,?!;:'\""), matched_state, 1)
+                i += 2
+                continue
+        
+        # Try single word - state match
+        matched_state = fuzzy_match_state(word_clean, cutoff=0.7)
+        if matched_state and matched_state.lower() != word_clean:
+            corrections.append((word_clean, matched_state))
+            # Replace preserving punctuation
+            for original_word in words:
+                if word_clean in original_word.lower():
+                    corrected_query = corrected_query.replace(word_clean, matched_state.lower(), 1)
+                    corrected_query = corrected_query.replace(word_clean.title(), matched_state, 1)
+                    break
+            i += 1
+            continue
+        
+        # Try single word - city match
+        matched_city = fuzzy_match_city(word_clean, cutoff=0.7)
+        if matched_city and matched_city.lower() != word_clean:
+            corrections.append((word_clean, matched_city))
+            for original_word in words:
+                if word_clean in original_word.lower():
+                    corrected_query = corrected_query.replace(word_clean, matched_city.lower(), 1)
+                    corrected_query = corrected_query.replace(word_clean.title(), matched_city, 1)
+                    break
+        
+        i += 1
+    
+    return corrected_query, corrections
+
+
+def extract_two_states_fuzzy(q: str):
+    """Extract two state names from query with fuzzy matching."""
+    q_lower = q.lower()
+    found = []
+    
+    # First pass: exact matches
+    for state in US_STATES_FULL:
+        if state.lower() in q_lower:
+            found.append(state)
+    
+    if len(set(found)) == 2:
+        return list(set(found))[:2]
+    
+    # Second pass: fuzzy matching
+    words = q_lower.replace(",", " ").replace(".", " ").replace("?", " ").split()
+    
+    # Try two-word combinations first
+    for i in range(len(words) - 1):
+        two_word = f"{words[i]} {words[i+1]}"
+        matched = fuzzy_match_state(two_word, cutoff=0.7)
+        if matched and matched not in found:
+            found.append(matched)
+    
+    # Then single words
+    for word in words:
+        if len(word) > 3:
+            matched = fuzzy_match_state(word, cutoff=0.7)
+            if matched and matched not in found:
+                found.append(matched)
+    
+    found = list(set(found))
+    if len(found) >= 2:
+        return found[:2]
+    
+    return None
+
+
+def extract_two_cities_fuzzy(q: str):
+    """Extract two city names from query with fuzzy matching."""
+    q_lower = q.lower()
+    city_names = df_features["city"].unique().tolist()
+    city_names_lower = [c.lower() for c in city_names]
+    
+    found_original = []
+    
+    # First pass: exact matches
+    for i, city_lower in enumerate(city_names_lower):
+        if city_lower in q_lower and city_names[i] not in found_original:
+            found_original.append(city_names[i])
+    
+    if len(found_original) == 2:
+        return found_original
+    
+    # Second pass: fuzzy matching
+    words = q_lower.replace(",", " ").replace(".", " ").replace("?", " ").split()
+    
+    for word in words:
+        if len(word) > 3:
+            matched = fuzzy_match_city(word, cutoff=0.7)
+            if matched and matched not in found_original:
+                found_original.append(matched)
+    
+    if len(found_original) >= 2:
+        return found_original[:2]
+    
+    return None
+
+
+def is_state_comparison_query_fuzzy(q: str) -> bool:
+    """Check if query is comparing states with fuzzy matching."""
+    q_lower = q.lower()
+    comparison_words = ["best", "better", "compare", "vs", "versus", "or", "comparison", "between"]
+    has_comparison = any(word in q_lower for word in comparison_words)
+    
+    states_found = extract_two_states_fuzzy(q)
+    return has_comparison and states_found is not None
+
+
+def extract_single_city_fuzzy(q: str):
+    """Extract a single city name from query with fuzzy matching."""
+    q_lower = q.lower()
+    city_names = df_features["city"].unique().tolist()
+    city_names_lower = [c.lower() for c in city_names]
+    
+    # Exact match first
+    for i, city_lower in enumerate(city_names_lower):
+        if city_lower in q_lower:
+            return city_names[i]
+    
+    # Fuzzy match
+    words = q_lower.replace(",", " ").replace(".", " ").replace("?", " ").split()
+    
+    for word in words:
+        if len(word) > 3:
+            matched = fuzzy_match_city(word, cutoff=0.7)
+            if matched:
+                return matched
+    
+    return None
+
+
+def extract_single_state_fuzzy(q: str):
+    """Extract a single state name from query with fuzzy matching."""
+    q_lower = q.lower()
+    
+    # Exact match first
+    for state in US_STATES_FULL:
+        if state.lower() in q_lower:
+            return state
+    
+    # Fuzzy match
+    words = q_lower.replace(",", " ").replace(".", " ").replace("?", " ").split()
+    
+    # Two-word combinations first
+    for i in range(len(words) - 1):
+        two_word = f"{words[i]} {words[i+1]}"
+        matched = fuzzy_match_state(two_word, cutoff=0.7)
+        if matched:
+            return matched
+    
+    # Single words
+    for word in words:
+        if len(word) > 3:
+            matched = fuzzy_match_state(word, cutoff=0.7)
+            if matched:
+                return matched
+    
+    return None
+
+
 
 # Dynamic theme styles
 if st.session_state.theme == 'dark':
@@ -1043,7 +1308,17 @@ if mode == "MLOps Dashboard":
 # -------------------------------------------------
 if mode == "Search":
     if search_clicked and user_query.strip():
-        q = user_query.strip()
+        q_original = user_query.strip()
+        
+        # -------------------------------------------------
+        # GLOBAL SPELLING CORRECTION
+        # -------------------------------------------------
+        q, corrections = correct_query_spelling(q_original)
+        
+        if corrections:
+            correction_text = ", ".join([f'"{old}" → "{new}"' for old, new in corrections])
+            st.info(f"🔄 Auto-corrected: {correction_text}")
+
         
         # Safety checks
         if is_nonsense_query(q):
@@ -1057,7 +1332,7 @@ if mode == "Search":
         # -------------------------------------------------
         import re
 
-        def extract_two_cities(q):
+        def extract_two_cities_fuzzy(q):
             """Extract exactly two city names from the query."""
             q_low = q.lower()
             city_values = df_features["city"].str.lower().unique()
@@ -1077,7 +1352,7 @@ if mode == "Search":
         # -------------------------------------------------
         # TWO-CITY COMPARISON (e.g., "Denver vs Dallas")
         # -------------------------------------------------
-        two_cities = extract_two_cities(q)
+        two_cities = extract_two_cities_fuzzy(q)
 
         if two_cities:
             city1, city2 = two_cities
@@ -1393,7 +1668,7 @@ Use your general knowledge about these cities (weather, culture, economy, etc.) 
             comparison_words = ["best", "better", "compare", "vs", "versus", "or", "comparison"]
             has_comparison = any(word in q_low for word in comparison_words)
             
-            states_found = extract_two_states(q)
+            states_found = extract_two_states_fuzzy(q)
             return has_comparison and states_found is not None
         
         
@@ -1523,8 +1798,8 @@ Use your general knowledge about these cities (weather, culture, economy, etc.) 
         # -------------------------------------------------
         # STATE COMPARISON (e.g., "which is best florida or texas")
         # -------------------------------------------------
-        if is_state_comparison_query(q):
-            two_states = extract_two_states(q)
+        if is_state_comparison_query_fuzzy(q):
+            two_states = extract_two_states_fuzzy(q)
             
             if two_states:
                 state1, state2 = two_states
@@ -2219,7 +2494,7 @@ IMPORTANT:
             with st.spinner("Running SQL..."):
                 sql = build_sql_with_fallback(q, use_gpt=True)
 
-                detected_city = detect_city_in_query(q)
+                detected_city = extract_single_city_fuzzy(q)
                 if detected_city:
                     sql = f"SELECT * FROM dbo.cities WHERE LOWER(city) = '{detected_city}'"
 
