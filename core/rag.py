@@ -4,17 +4,11 @@ import os
 from typing import List, Dict
 import numpy as np
 from openai import OpenAI
+from core.openai_client import get_openai_client
 
 from dotenv import load_dotenv
 load_dotenv()
 
-# ---------- Embedding client ----------
-
-def get_openai_client():
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY not set in environment.")
-    return OpenAI(api_key=api_key)
 
 # ---------- Knowledge base ----------
 
