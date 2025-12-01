@@ -10,37 +10,10 @@ from sklearn.metrics import silhouette_score
 import streamlit as st
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
+from db_config import get_engine
+from mlops.registry import load_registry, save_registry
 
 load_dotenv()
-
-# -----------------------------------------------------
-# Helper: Load Registry
-# -----------------------------------------------------
-def load_registry():
-    with open("mlops/registry.json", "r") as f:
-        return json.load(f)
-
-def save_registry(registry):
-    with open("mlops/registry.json", "w") as f:
-        json.dump(registry, f, indent=4)
-
-
-# -----------------------------------------------------
-# Database Connection  (SQLAlchemy + pytds)
-# -----------------------------------------------------
-def get_engine():
-    server = st.secrets["SQL_SERVER_HOST"]
-    database = st.secrets["SQL_SERVER_DB"]
-    username = st.secrets["SQL_SERVER_USER"]
-    password = st.secrets["SQL_SERVER_PASSWORD"]
-
-    conn_str = (
-        f"mssql+pytds://{username}:{password}@{server}:1433/{database}"
-        "?charset=utf8&autocommit=True"
-    )
-
-    return create_engine(conn_str)
-
 
 # -----------------------------------------------------
 # Load fresh data from SQL
