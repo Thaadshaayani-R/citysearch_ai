@@ -444,16 +444,28 @@ def extract_single_city_fuzzy(q: str):
     city_names = df_features["city"].unique().tolist()
     city_names_lower = [c.lower() for c in city_names]
     
+    # List of state names to exclude from city matching
+    state_names_lower = [s.lower() for s in US_STATES_FULL]
+    
     # Exact match first
     for i, city_lower in enumerate(city_names_lower):
         if city_lower in q_lower:
             return city_names[i]
     
-    # Fuzzy match
+    # Fuzzy match - but skip state names!
     words = q_lower.replace(",", " ").replace(".", " ").replace("?", " ").split()
     
     for word in words:
         if len(word) > 3:
+            # Skip if this word is a state name
+            if word in state_names_lower:
+                continue
+            
+            # Skip common query words
+            skip_words = ["cities", "city", "many", "how", "what", "which", "best", "population", "total"]
+            if word in skip_words:
+                continue
+                
             matched = fuzzy_match_city(word, cutoff=0.7)
             if matched:
                 return matched
