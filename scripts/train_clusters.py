@@ -1,83 +1,97 @@
-# scripts/train_clusters.py
+# scripts/train_clusters.py (FIXED VERSION)
+"""
+Train KMeans clustering model for cities.
+Saves model bundle compatible with cluster_router.py
+"""
 
 import os
 import pickle
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
-from sqlalchemy import create_engine, text
+from sklearn.metrics import silhouette_score
+from sqlalchemy import text
 import streamlit as st
 
-# -------------------------------------------------
-# 1. SQLAlchemy Engine (Azure SQL + Streamlit Cloud)
-# -------------------------------------------------
-def get_engine():
-    server = st.secrets["SQL_SERVER_HOST"]
-    database = st.secrets["SQL_SERVER_DB"]
-    user = st.secrets["SQL_SERVER_USER"]
-    password = st.secrets["SQL_SERVER_PASSWORD"]
-
-    conn_str = (
-        f"mssql+pytds://{user}:{password}@{server}:1433/{database}"
-        "?charset=utf8&autocommit=True"
-    )
-    return create_engine(conn_str)
+# Import from unified db_config
+from db_config import get_engine
 
 
-# -------------------------------------------------
-# 2. Load City Data from Azure SQL
-# -------------------------------------------------
 def load_city_data():
+    """Load city data from database."""
     engine = get_engine()
     query = text("""
         SELECT city, state, population, median_age, avg_household_size
         FROM dbo.cities
+        WHERE population > 0 AND median_age > 0 AND avg_household_size > 0
     """)
-
-    with engine.begin() as conn:
+    with engine.connect() as conn:
         df = pd.read_sql(query, conn)
-
     return df
 
 
-# -------------------------------------------------
-# 3. Train KMeans Clusters
-# -------------------------------------------------
-def main():
+def train_clusters(n_clusters: int = 5):
+    """
+    Train KMeans clustering model.
+    
+    Args:
+        n_clusters: Number of clusters (default 5 to match cluster_labels.py)
+    
+    Returns:
+        dict: Training results including metrics
+    """
     print("🔵 Loading cities...")
     df = load_city_data()
-
+    print(f"   Loaded {len(df)} cities")
+    
     FEATURES = ["population", "median_age", "avg_household_size"]
     X = df[FEATURES]
-
-    print("🔵 Scaling...")
+    
+    print("🔵 Scaling features...")
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-
-    print("🔵 Training KMeans...")
-    kmeans = KMeans(n_clusters=5, random_state=42)
-    kmeans.fit(X_scaled)
-
-    df["cluster"] = kmeans.labels_
-
+    
+    print(f"🔵 Training KMeans with {n_clusters} clusters...")
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init="auto")
+    labels = kmeans.fit_predict(X_scaled)
+    
+    # Calculate quality metric
+    sil_score = silhouette_score(X_scaled, labels)
+    print(f"   Silhouette Score: {sil_score:.4f}")
+    
+    df["cluster"] = labels
+    
     # -------------------------------------------------
-    # 4. Save the model bundle
+    # CRITICAL: Bundle keys must match cluster_router.py
+    # cluster_router.py expects: cluster_data["model"], cluster_data["scaler"]
     # -------------------------------------------------
     os.makedirs("models", exist_ok=True)
     MODEL_PATH = os.path.join("models", "city_clusters.pkl")
-
+    
     bundle = {
-        "kmeans": kmeans,
-        "scaler": scaler,
+        "model": kmeans,      # ✅ CORRECT KEY (not "kmeans")
+        "scaler": scaler,     # ✅ CORRECT KEY
         "features": FEATURES,
+        "n_clusters": n_clusters,
+        "silhouette_score": sil_score,
     }
-
+    
     with open(MODEL_PATH, "wb") as f:
         pickle.dump(bundle, f)
-
-    print(f"✅ SAVED MODEL: {MODEL_PATH}")
-    print(df.head())
+    
+    print(f"✅ Model saved to: {MODEL_PATH}")
+    print(f"   Bundle keys: {list(bundle.keys())}")
+    
+    return {
+        "model_path": MODEL_PATH,
+        "n_clusters": n_clusters,
+        "silhouette_score": sil_score,
+        "num_cities": len(df),
+    }
 
 
 if __name__ == "__main__":
-    main()
+    results = train_clusters(n_clusters=5)
+    print("\n📊 Training Results:")
+    for k, v in results.items():
+        print(f"   {k}: {v}")
