@@ -5,8 +5,9 @@ import pickle
 import pandas as pd
 import streamlit as st
 from sqlalchemy import text
-from .cluster_labels import CLUSTER_LABELS
+from .cluster_definitions import CLUSTER_LABELS
 from db_config import get_engine
+from core.cluster_definitions import CLUSTER_LABELS, get_cluster_name
 
 # -----------------------------
 # 1. CACHED Model Loading
