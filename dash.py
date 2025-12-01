@@ -1109,6 +1109,18 @@ def show_city_profile_card(city_name: str, state_name: str, row: pd.Series):
     Display a beautiful city profile card with AI-generated summary.
     """
     
+    # Get values safely (handle missing columns)
+    population = row.get('population', 'N/A')
+    median_age = row.get('median_age', 'N/A')
+    household_size = row.get('avg_household_size', 'N/A')
+    state_code = row.get('state_code', state_name[:2].upper() if state_name else 'N/A')
+    
+    # Format population with commas if it's a number
+    if isinstance(population, (int, float)):
+        population_display = f"{int(population):,}"
+    else:
+        population_display = str(population)
+    
     # 1. City Overview Card (NO TABLE)
     st.markdown(f"""
     <div style="
@@ -1122,19 +1134,19 @@ def show_city_profile_card(city_name: str, state_name: str, row: pd.Series):
         <div style="display: flex; flex-wrap: wrap; gap: 2rem; margin-top: 1.5rem;">
             <div>
                 <div style="font-size: 0.8rem; opacity: 0.8;">Population</div>
-                <div style="font-size: 1.5rem; font-weight: 600;">{row['population']:,}</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{population_display}</div>
             </div>
             <div>
                 <div style="font-size: 0.8rem; opacity: 0.8;">Median Age</div>
-                <div style="font-size: 1.5rem; font-weight: 600;">{row['median_age']}</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{median_age}</div>
             </div>
             <div>
                 <div style="font-size: 0.8rem; opacity: 0.8;">Household Size</div>
-                <div style="font-size: 1.5rem; font-weight: 600;">{row['avg_household_size']}</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{household_size}</div>
             </div>
             <div>
-                <div style="font-size: 0.8rem; opacity: 0.8;">State Code</div>
-                <div style="font-size: 1.5rem; font-weight: 600;">{row['state_code']}</div>
+                <div style="font-size: 0.8rem; opacity: 0.8;">State</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{state_code}</div>
             </div>
         </div>
     </div>
@@ -1146,9 +1158,9 @@ def show_city_profile_card(city_name: str, state_name: str, row: pd.Series):
         with st.spinner("Generating city profile..."):
             prompt = f"""
             Write a 2-3 sentence profile for {city_name}, {state_name}.
-            Population: {row['population']:,}
-            Median Age: {row['median_age']}
-            Avg Household Size: {row['avg_household_size']}
+            Population: {population_display}
+            Median Age: {median_age}
+            Avg Household Size: {household_size}
             
             Focus on lifestyle, culture, and what makes this city unique.
             Be concise and engaging. No bullet points.
