@@ -7,24 +7,10 @@ import streamlit as st
 from sqlalchemy import create_engine, text
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
+from db_config import get_engine
 
 MODEL_DIR = os.path.join(os.getcwd(), "models")
 os.makedirs(MODEL_DIR, exist_ok=True)
-
-# ------------------------------------------------------
-# SQLAlchemy Connection (Streamlit Cloud Compatible)
-# ------------------------------------------------------
-def get_engine():
-    server = st.secrets["SQL_SERVER_HOST"]
-    database = st.secrets["SQL_SERVER_DB"]
-    username = st.secrets["SQL_SERVER_USER"]
-    password = st.secrets["SQL_SERVER_PASSWORD"]
-
-    conn_str = (
-        f"mssql+pytds://{username}:{password}@{server}:1433/{database}"
-        "?charset=utf8&autocommit=True"
-    )
-    return create_engine(conn_str)
 
 # ------------------------------------------------------
 # LOAD CITY DATA
