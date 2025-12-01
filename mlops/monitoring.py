@@ -9,31 +9,8 @@ from scipy.stats import ks_2samp
 from datetime import datetime
 import streamlit as st
 from sqlalchemy import create_engine, text
-
-
-# -----------------------------------------------------
-# Helper to load registry
-# -----------------------------------------------------
-def load_registry():
-    with open("mlops/registry.json", "r") as f:
-        return json.load(f)
-
-
-# -----------------------------------------------------
-# Database Connection  (SQLAlchemy + pytds)
-# -----------------------------------------------------
-def get_engine():
-    server = st.secrets["SQL_SERVER_HOST"]
-    database = st.secrets["SQL_SERVER_DB"]
-    username = st.secrets["SQL_SERVER_USER"]
-    password = st.secrets["SQL_SERVER_PASSWORD"]
-
-    conn_str = (
-        f"mssql+pytds://{username}:{password}@{server}:1433/{database}"
-        "?charset=utf8&autocommit=True"
-    )
-
-    return create_engine(conn_str)
+from db_config import get_engine
+from mlops.registry import load_registry
 
 
 # -----------------------------------------------------
