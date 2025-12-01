@@ -1104,6 +1104,129 @@ def show_city_insights(city_name: str):
         }
     )
 
+def show_city_profile_card(city_name: str, state_name: str, row: pd.Series):
+    """
+    Display a beautiful city profile card with AI-generated summary.
+    """
+    
+    # 1. City Overview Card (NO TABLE)
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        color: white;
+    ">
+        <h2 style="margin: 0; font-size: 2rem; font-weight: 700;">{city_name}, {state_name}</h2>
+        <div style="display: flex; flex-wrap: wrap; gap: 2rem; margin-top: 1.5rem;">
+            <div>
+                <div style="font-size: 0.8rem; opacity: 0.8;">Population</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{row['population']:,}</div>
+            </div>
+            <div>
+                <div style="font-size: 0.8rem; opacity: 0.8;">Median Age</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{row['median_age']}</div>
+            </div>
+            <div>
+                <div style="font-size: 0.8rem; opacity: 0.8;">Household Size</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{row['avg_household_size']}</div>
+            </div>
+            <div>
+                <div style="font-size: 0.8rem; opacity: 0.8;">State Code</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{row['state_code']}</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 2. AI-Generated Profile Summary
+    client = get_openai_client()
+    if client:
+        with st.spinner("Generating city profile..."):
+            prompt = f"""
+            Write a 2-3 sentence profile for {city_name}, {state_name}.
+            Population: {row['population']:,}
+            Median Age: {row['median_age']}
+            Avg Household Size: {row['avg_household_size']}
+            
+            Focus on lifestyle, culture, and what makes this city unique.
+            Be concise and engaging. No bullet points.
+            """
+            
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4.1-mini",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7,
+                    max_tokens=150
+                )
+                summary = response.choices[0].message.content.strip()
+                
+                st.markdown(f"""
+                <div style="
+                    background: rgba(102, 126, 234, 0.1);
+                    border-left: 4px solid #667eea;
+                    border-radius: 8px;
+                    padding: 1.25rem;
+                    margin-bottom: 1.5rem;
+                    font-style: italic;
+                    line-height: 1.6;
+                ">
+                    "{summary}"
+                </div>
+                """, unsafe_allow_html=True)
+            except Exception as e:
+                st.warning("Could not generate AI summary.")
+    
+    # 3. Highlights Section (AI-Generated)
+    if client:
+        with st.spinner("Generating highlights..."):
+            prompt = f"""
+            Give exactly 3 short highlights about {city_name}, {state_name}.
+            Each highlight should be 5-8 words maximum.
+            Format: Just the 3 highlights, one per line, no numbers or bullets.
+            
+            Example format:
+            Strong outdoor recreation culture
+            Growing tech and business opportunities
+            Young and active population
+            """
+            
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4.1-mini",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7,
+                    max_tokens=100
+                )
+                highlights = response.choices[0].message.content.strip().split('\n')
+                highlights = [h.strip() for h in highlights if h.strip()][:3]
+                
+                st.markdown("""
+                <div style="margin-bottom: 1rem;">
+                    <h4 style="color: #667eea; margin-bottom: 0.75rem;">✨ Highlights</h4>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                for highlight in highlights:
+                    # Remove any leading bullets or numbers
+                    highlight = highlight.lstrip('•-*0123456789. ')
+                    st.markdown(f"""
+                    <div style="
+                        display: flex;
+                        align-items: center;
+                        gap: 0.5rem;
+                        padding: 0.5rem 0;
+                    ">
+                        <span style="color: #667eea;">✓</span>
+                        <span>{highlight}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+            except Exception as e:
+                pass
+
 
 # -------------------------------------------------
 # ML — SIMILAR CITIES
@@ -2546,9 +2669,26 @@ IMPORTANT:
 
             st.stop()
 
+
         # -------------------------------------------------
-        # DEFAULT SQL MODE (WITH CITY OVERRIDE + ML)
+        # CITY PROFILE QUERY
         # -------------------------------------------------
+        q_lower = q.lower()
+        if "city profile" in q_lower or "profile for" in q_lower or "tell me about" in q_lower:
+            detected_city = extract_single_city_fuzzy(q)
+            
+            if detected_city:
+                city_row = df_features[df_features["city"].str.lower() == detected_city.lower()]
+                
+                if not city_row.empty:
+                    row = city_row.iloc[0]
+                    show_city_profile_card(
+                        city_name=row["city"],
+                        state_name=row["state"],
+                        row=row
+                    )
+                    st.stop()
+        
         if mode_intent == "sql":
             with st.spinner("Running SQL..."):
                 sql = build_sql_with_fallback(q, use_gpt=True)
