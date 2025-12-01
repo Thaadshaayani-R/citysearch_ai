@@ -2534,9 +2534,18 @@ IMPORTANT:
             with st.spinner("Running SQL..."):
                 sql = build_sql_with_fallback(q, use_gpt=True)
 
-                detected_city = extract_single_city_fuzzy(q)
-                if detected_city:
-                    sql = f"SELECT * FROM dbo.cities WHERE LOWER(city) = '{detected_city}'"
+                # Check if this is a count/aggregate query - don't override these
+                q_lower = q.lower()
+                is_aggregate_query = any(phrase in q_lower for phrase in [
+                    "how many", "count", "total", "number of",
+                    "average", "avg", "sum", "percentage", "percent"
+                ])
+                
+                # Only try to detect single city if NOT an aggregate query
+                if not is_aggregate_query:
+                    detected_city = extract_single_city_fuzzy(q)
+                    if detected_city:
+                        sql = f"SELECT * FROM dbo.cities WHERE LOWER(city) = '{detected_city}'"
 
                 # Run SQL quietly
                 df = run_sql_query(sql)
@@ -2546,7 +2555,6 @@ IMPORTANT:
                     row = df.iloc[0]
                     card_html = "<div class='result-card'><div style='display: flex; justify-content: space-around; align-items: center; flex-wrap: wrap; gap: 1rem;'>"
 
-                    
                     for col in df.columns:
                         label = col.replace("_", " ").title()
                         value = row[col]
