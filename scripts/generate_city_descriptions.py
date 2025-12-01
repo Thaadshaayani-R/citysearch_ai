@@ -10,7 +10,6 @@ from db_config import get_engine
 
 load_dotenv()
 
-
 # ---------------------------------------
 # 2) OpenAI Client
 # ---------------------------------------
