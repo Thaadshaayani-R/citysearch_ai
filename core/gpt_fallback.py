@@ -1,14 +1,8 @@
 # core/gpt_fallback.py
 
 import os
-from openai import OpenAI
+from core.openai_client import get_openai_client, require_openai_client
 from .rag import retrieve_schema_context  # NEW: import RAG retriever
-
-def get_openai_client():
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY not set in environment.")
-    return OpenAI(api_key=api_key)
 
 
 SCHEMA_DESCRIPTION = """
@@ -37,9 +31,12 @@ def generate_sql_with_gpt(user_query: str) -> str:
     Use GPT to generate a safe SQL query based on natural language and schema,
     enriched with RAG context from the schema knowledge base.
     """
-    client = get_openai_client()
-
-    # ---- NEW: RAG retrieval step ----
+    client = get_openai_client() 
+    
+    if client is None:
+        raise RuntimeError("OpenAI client not configured")
+    
+    # ---- RAG retrieval step ----
     context_chunks = retrieve_schema_context(user_query, top_k=5)
     context_text = "\n\n".join(
         f"- {chunk['text']}" for chunk in context_chunks
