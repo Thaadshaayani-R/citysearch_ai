@@ -12,6 +12,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestRegressor
+from db_config import get_engine
 
 # --------------------------------------------------------
 # Paths
@@ -24,22 +25,6 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 print("PROJECT_ROOT:", PROJECT_ROOT)
 print("MODEL_DIR:", MODEL_DIR)
 
-
-# --------------------------------------------------------
-# 1. SQLAlchemy Engine (Streamlit Cloud Compatible)
-# --------------------------------------------------------
-def get_engine():
-    server = st.secrets["SQL_SERVER_HOST"]
-    database = st.secrets["SQL_SERVER_DB"]
-    user = st.secrets["SQL_SERVER_USER"]
-    password = st.secrets["SQL_SERVER_PASSWORD"]
-
-    conn_str = (
-        f"mssql+pytds://{user}:{password}@{server}:1433/{database}"
-        "?charset=utf8&autocommit=True"
-    )
-
-    return create_engine(conn_str)
 
 
 # --------------------------------------------------------
