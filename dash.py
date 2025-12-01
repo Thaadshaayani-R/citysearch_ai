@@ -18,6 +18,8 @@ from core.intent_classifier import classify_query_intent
 from core.smart_router import smart_route
 from core.ml_explain import explain_ml_results
 from core.score_translate import to_level
+from core.openai_client import get_openai_client
+from core.data_loader import US_STATES, is_valid_state, normalize_state_name
 
 from mlops.retrain import retrain
 
@@ -867,22 +869,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-# -------------------------------------------------
-# DB HELPERS
-# -------------------------------------------------
-def get_db_connection():
-    server = os.getenv("SQL_SERVER_HOST")
-    database = os.getenv("SQL_SERVER_DB")
-    username = os.getenv("SQL_SERVER_USER")
-    password = os.getenv("SQL_SERVER_PASSWORD")
-    driver = os.getenv("SQL_SERVER_DRIVER", "{ODBC Driver 17 for SQL Server}")
-
-    return pyodbc.connect(
-        f"DRIVER={driver};SERVER={server};DATABASE={database};UID={username};PWD={password}"
-    )
-
-
 def run_sql_query(sql):
     import pandas as pd
 
@@ -923,16 +909,6 @@ def log_user_query(query_text, detected_mode, ml_mode):
 
     except Exception as e:
         print("Query Log Error:", e)
-
-
-
-
-
-def get_openai_client():
-    key = os.getenv("OPENAI_API_KEY")
-    if not key:
-        return None
-    return OpenAI(api_key=key)
 
 
 def summarize_results(df: pd.DataFrame, user_query: str) -> str:
@@ -1839,14 +1815,6 @@ Use your general knowledge about these cities (weather, culture, economy, etc.) 
                 return rsp.choices[0].message.content.strip()
             except Exception as e:
                 return f"AI comparison unavailable: {str(e)}"
-        
-        
-        def get_openai_client():
-            """Get OpenAI client."""
-            key = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-            if not key:
-                return None
-            return OpenAI(api_key=key)
 
             
             if not rows:
