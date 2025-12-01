@@ -1,4 +1,4 @@
-# db_config.py (FIXED VERSION)
+# db_config.py
 """
 Unified database configuration for CitySearch AI.
 All modules should import from here - DO NOT duplicate this code.
@@ -10,13 +10,14 @@ Usage:
 import streamlit as st
 from sqlalchemy import create_engine
 from sqlalchemy.pool import QueuePool
+import urllib.parse
 
 
 @st.cache_resource
 def get_engine():
     """
     Returns a cached SQLAlchemy Engine with connection pooling.
-    Uses pytds for Streamlit Cloud compatibility (pure Python, no ODBC needed).
+    Uses pymssql for Streamlit Cloud compatibility.
     
     Returns:
         sqlalchemy.Engine: Configured database engine
@@ -25,11 +26,13 @@ def get_engine():
     database = st.secrets["SQL_SERVER_DB"]
     username = st.secrets["SQL_SERVER_USER"]
     password = st.secrets["SQL_SERVER_PASSWORD"]
+    
+    # URL encode password to handle special characters
+    password_encoded = urllib.parse.quote_plus(password)
 
-    # pytds connection string (Streamlit Cloud compatible - no system ODBC needed)
+    # pymssql connection string (Streamlit Cloud compatible)
     conn_str = (
-        f"mssql+pytds://{username}:{password}@{server}:1433/{database}"
-        "?charset=utf8&autocommit=True"
+        f"mssql+pymssql://{username}:{password_encoded}@{server}:1433/{database}"
     )
 
     return create_engine(
