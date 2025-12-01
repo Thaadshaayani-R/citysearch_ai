@@ -7,24 +7,9 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from sqlalchemy import create_engine, text
 import streamlit as st
+from db_config import get_engine
 
 load_dotenv()
-
-# ---------------------------------------
-# 1) SQLAlchemy + pytds connection (Streamlit-safe)
-# ---------------------------------------
-def get_engine():
-    server = st.secrets["SQL_SERVER_HOST"]
-    database = st.secrets["SQL_SERVER_DB"]
-    username = st.secrets["SQL_SERVER_USER"]
-    password = st.secrets["SQL_SERVER_PASSWORD"]
-
-    conn_str = (
-        f"mssql+pytds://{username}:{password}@{server}:1433/{database}"
-        "?charset=utf8&autocommit=True"
-    )
-    return create_engine(conn_str)
-
 
 # ---------------------------------------
 # 2) OpenAI Client
