@@ -441,34 +441,53 @@ def is_state_comparison_query_fuzzy(q: str) -> bool:
 def extract_single_city_fuzzy(q: str):
     """Extract a single city name from query with fuzzy matching."""
     q_lower = q.lower()
+    
+    # Common query words to skip (NOT hardcoded state names)
+    QUERY_SKIP_WORDS = {
+        "cities", "city", "population", "median", "average", "household", 
+        "size", "age", "total", "count", "how", "many", "what", "which",
+        "best", "worst", "top", "bottom", "largest", "smallest", "biggest",
+        "highest", "lowest", "greater", "less", "more", "than", "over", 
+        "under", "above", "below", "with", "from", "the", "and", "for", 
+        "are", "this", "that", "number", "percent", "percentage"
+    }
+    
+    # Get state names dynamically from existing list
+    state_names_lower = {s.lower() for s in US_STATES_FULL}
+    
+    # Combine skip words
+    all_skip_words = QUERY_SKIP_WORDS | state_names_lower
+    
     city_names = df_features["city"].unique().tolist()
     city_names_lower = [c.lower() for c in city_names]
     
-    # List of state names to exclude from city matching
-    state_names_lower = [s.lower() for s in US_STATES_FULL]
-    
-    # Exact match first
+    # Exact match first - only if the city name appears as a complete word
     for i, city_lower in enumerate(city_names_lower):
-        if city_lower in q_lower:
+        # Skip if city name is also a state name (e.g., "New York")
+        if city_lower in state_names_lower:
+            continue
+            
+        # Check for exact word match using word boundaries
+        pattern = r'\b' + re.escape(city_lower) + r'\b'
+        if re.search(pattern, q_lower):
             return city_names[i]
     
-    # Fuzzy match - but skip state names!
+    # Fuzzy match - but be very careful
     words = q_lower.replace(",", " ").replace(".", " ").replace("?", " ").split()
     
     for word in words:
-        if len(word) > 3:
-            # Skip if this word is a state name
-            if word in state_names_lower:
-                continue
+        # Skip short words
+        if len(word) <= 3:
+            continue
             
-            # Skip common query words
-            skip_words = ["cities", "city", "many", "how", "what", "which", "best", "population", "total"]
-            if word in skip_words:
-                continue
-                
-            matched = fuzzy_match_city(word, cutoff=0.7)
-            if matched:
-                return matched
+        # Skip if this word is in our skip list
+        if word in all_skip_words:
+            continue
+        
+        # Only do fuzzy matching with high cutoff (0.85 = very similar)
+        matched = fuzzy_match_city(word, cutoff=0.85)
+        if matched and matched.lower() not in all_skip_words:
+            return matched
     
     return None
 
