@@ -2552,56 +2552,51 @@ IMPORTANT:
         if mode_intent == "sql":
             with st.spinner("Running SQL..."):
                 sql = build_sql_with_fallback(q, use_gpt=True)
-
-                # Check if this is a count/aggregate query - don't override these
+                
+                # Check if this is a special query - don't override these
                 q_lower = q.lower()
-                is_aggregate_query = any(phrase in q_lower for phrase in [
+                is_special_query = any(phrase in q_lower for phrase in [
                     "how many", "count", "total", "number of",
-                    "average", "avg", "sum", "percentage", "percent"
+                    "average", "avg", "sum", "percentage", "percent",
+                    ">", "<", ">=", "<=", "greater", "less", "more than",
+                    "top ", "largest", "smallest", "biggest", "highest", "lowest"
                 ])
                 
-                # Only try to detect single city if NOT an aggregate query
-                if not is_aggregate_query:
+                # Only try to detect single city if NOT a special query
+                if not is_special_query:
                     detected_city = extract_single_city_fuzzy(q)
                     if detected_city:
                         sql = f"SELECT * FROM dbo.cities WHERE LOWER(city) = '{detected_city}'"
-
+                
                 # Run SQL quietly
                 df = run_sql_query(sql)
-
+                
                 # If single row → card mode
                 if len(df) == 1 and len(df.columns) <= 3:
                     row = df.iloc[0]
                     card_html = "<div class='result-card'><div style='display: flex; justify-content: space-around; align-items: center; flex-wrap: wrap; gap: 1rem;'>"
-
                     for col in df.columns:
                         label = col.replace("_", " ").title()
                         value = row[col]
-
                         if isinstance(value, (int, float)):
                             display_value = f"{value:,.2f}" if isinstance(value, float) else f"{value:,}"
                         else:
                             display_value = str(value)
-
                         card_html += f"""
                             <div style="text-align: center;">
                                 <div style="font-size: 0.75rem; opacity: 0.9; margin-bottom: 0.25rem;">{label}</div>
                                 <div class="result-card-value">{display_value}</div>
                             </div>
                         """
-
                     card_html += "</div></div>"
                     st.markdown(card_html, unsafe_allow_html=True)
-
                 else:
                     # AI Summary
                     if enable_summary:
                         st.markdown("<div class='section-header'>AI Summary</div>", unsafe_allow_html=True)
                         st.info(summarize_results(df, q))
-
                     st.markdown("<div class='section-header'>Results</div>", unsafe_allow_html=True)
                     st.dataframe(df, use_container_width=True, height=400)
-
                     csv = convert_df_to_csv(df)
                     st.download_button(
                         label="📥 Download CSV",
@@ -2609,16 +2604,14 @@ IMPORTANT:
                         file_name="query_results.csv",
                         mime="text/csv"
                     )
-
+                
                 # ML city insights
                 if len(df) == 1 and "city" in [c.lower() for c in df.columns]:
                     city_col = [c for c in df.columns if c.lower() == "city"][0]
                     city_name = df.iloc[0][city_col]
-
                     if str(city_name).lower() in df_features["city"].str.lower().values:
                         show_city_insights(city_name)
                         show_similar_cities(city_name)
-
             st.stop()
 
         # -------------------------------------------------
