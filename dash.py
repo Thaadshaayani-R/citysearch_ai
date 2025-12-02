@@ -1240,6 +1240,99 @@ def show_city_profile_card(city_name: str, state_name: str, row: pd.Series):
                 pass
 
 
+def show_single_metric_card(city_name: str, state_name: str, metric_name: str, metric_value, row: pd.Series):
+    """
+    Display a beautiful single metric card with context.
+    """
+    
+    # Format the metric value
+    if isinstance(metric_value, (int, float)):
+        if metric_value > 1000:
+            formatted_value = f"{int(metric_value):,}"
+        else:
+            formatted_value = f"{metric_value:.2f}" if isinstance(metric_value, float) else str(metric_value)
+    else:
+        formatted_value = str(metric_value)
+    
+    # Get metric display name
+    metric_display = metric_name.replace("_", " ").title()
+    
+    # Main card
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        color: white;
+        text-align: center;
+    ">
+        <div style="font-size: 1rem; opacity: 0.9; margin-bottom: 0.5rem;">
+            {city_name}, {state_name} — {metric_display}
+        </div>
+        <div style="font-size: 3rem; font-weight: 700; margin-bottom: 0.5rem;">
+            {formatted_value}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # AI-Generated Context
+    client = get_openai_client()
+    if client:
+        with st.spinner("Generating insights..."):
+            # Get other metrics for context
+            population = row.get('population', 'N/A')
+            median_age = row.get('median_age', 'N/A')
+            household_size = row.get('avg_household_size', 'N/A')
+            
+            prompt = f"""
+            The user asked about the {metric_display.lower()} of {city_name}, {state_name}.
+            The value is: {formatted_value}
+            
+            Other city data:
+            - Population: {population}
+            - Median Age: {median_age}
+            - Avg Household Size: {household_size}
+            
+            Give exactly 2 short bullet points (each 8-12 words) providing context about this metric.
+            Focus on comparisons or interesting facts.
+            Format: Just 2 lines starting with bullet points.
+            
+            Example:
+            • 14th largest metro area in the United States
+            • Growing faster than the national average
+            """
+            
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4.1-mini",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7,
+                    max_tokens=100
+                )
+                insights = response.choices[0].message.content.strip().split('\n')
+                insights = [i.strip() for i in insights if i.strip()][:2]
+                
+                for insight in insights:
+                    # Clean up bullet points
+                    insight = insight.lstrip('•-*● ')
+                    st.markdown(f"""
+                    <div style="
+                        display: flex;
+                        align-items: flex-start;
+                        gap: 0.5rem;
+                        padding: 0.4rem 0;
+                        font-size: 0.95rem;
+                    ">
+                        <span style="color: #667eea;">•</span>
+                        <span>{insight}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+            except Exception as e:
+                pass
+
+
 # -------------------------------------------------
 # ML — SIMILAR CITIES
 # -------------------------------------------------
@@ -2700,6 +2793,57 @@ IMPORTANT:
                         row=row
                     )
                     st.stop()
+
+        # -------------------------------------------------
+        # SINGLE METRIC QUERY (e.g., "What is the population of Denver?")
+        # -------------------------------------------------
+        q_lower = q.lower()
+        
+        # Detect single metric questions
+        metric_keywords = {
+            "population": "population",
+            "median age": "median_age",
+            "age": "median_age",
+            "household size": "avg_household_size",
+            "household": "avg_household_size",
+        }
+        
+        # Check if this is a "what is the X of Y" pattern
+        is_metric_query = any(phrase in q_lower for phrase in [
+            "what is the", "what's the", "tell me the", "show me the",
+            "how big is", "how old is", "how large is"
+        ])
+        
+        if is_metric_query:
+            # Find which metric they're asking about
+            detected_metric = None
+            metric_column = None
+            
+            for keyword, column in metric_keywords.items():
+                if keyword in q_lower:
+                    detected_metric = keyword
+                    metric_column = column
+                    break
+            
+            if detected_metric:
+                # Extract city name
+                detected_city = extract_single_city_fuzzy(q)
+                
+                if detected_city:
+                    city_row = df_features[df_features["city"].str.lower() == detected_city.lower()]
+                    
+                    if not city_row.empty:
+                        row = city_row.iloc[0]
+                        metric_value = row.get(metric_column, "N/A")
+                        
+                        show_single_metric_card(
+                            city_name=row["city"],
+                            state_name=row["state"],
+                            metric_name=detected_metric,
+                            metric_value=metric_value,
+                            row=row
+                        )
+                        st.stop()
         
         if mode_intent == "sql":
             with st.spinner("Running SQL..."):
