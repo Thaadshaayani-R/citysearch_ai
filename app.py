@@ -266,14 +266,14 @@ if mode == "Search":
             padding: 3rem 2rem;
             color: #a0aec0;
         ">
-            <div style="font-size: 1.1rem; margin-bottom: 0.5rem;">
-                Ask me anything about US cities
-            </div>
-            <div style="font-size: 0.9rem; opacity: 0.8;">
-                Try clicking an example from the sidebar or type your own question
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        #     <div style="font-size: 1.1rem; margin-bottom: 0.5rem;">
+        #         Ask me anything about US cities
+        #     </div>
+        #     <div style="font-size: 0.9rem; opacity: 0.8;">
+        #         Try clicking an example from the sidebar or type your own question
+        #     </div>
+        # </div>
+        # """, unsafe_allow_html=True)
         
         # Feature highlights
         
