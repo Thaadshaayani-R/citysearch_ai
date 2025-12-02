@@ -1,146 +1,347 @@
 """
 CitySearch AI - Main Application
+=================================
 A smart AI-powered search engine for US cities.
+
+This is the main entry point that orchestrates:
+- LLM-based query classification
+- Smart query routing
+- Beautiful UI components
+- MLOps dashboard
+
+Author: CitySearch AI Team
 """
 
 import streamlit as st
 import pandas as pd
-import sys
-sys.path.insert(0, '..')  # Add parent directory to path
-
-from db_config import get_engine
-from config import APP_TITLE, APP_SUBTITLE
-from llm_classifier import classify_query
-from query_handlers import handle_query
-
 
 # -------------------------------------------------
-# PAGE CONFIG
+# PAGE CONFIG (must be first Streamlit command)
 # -------------------------------------------------
 st.set_page_config(
     page_title="CitySearch AI",
     page_icon="🏙️",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
+# -------------------------------------------------
+# IMPORTS
+# -------------------------------------------------
+from config import APP_TITLE, APP_SUBTITLE, QUICK_EXAMPLES
+from styles import get_custom_css
+from utils import correct_query_spelling, is_nonsense_query, is_world_query
+from llm_classifier import classify_query_with_llm
+from query_handlers import handle_query
+from mlops_dashboard import render_mlops_dashboard
+
+# Import database config
+from db_config import get_engine
+
+# Import core modules (from your existing codebase)
+try:
+    from core.smart_router import smart_route
+except ImportError:
+    smart_route = None
+
+try:
+    from core.lifestyle_rag_v2 import try_build_lifestyle_card
+except ImportError:
+    try_build_lifestyle_card = None
+
+try:
+    from core.intent_classifier import classify_query_intent
+except ImportError:
+    classify_query_intent = None
+
+try:
+    from core.ml_utils import load_trained_model, load_feature_data
+except ImportError:
+    load_trained_model = None
+    load_feature_data = None
+
 
 # -------------------------------------------------
-# LOAD DATA
+# CACHED DATA LOADING
 # -------------------------------------------------
+@st.cache_resource
+def load_models():
+    """Load ML models once and cache."""
+    if load_trained_model:
+        try:
+            model, metadata = load_trained_model("city_clusters")
+            return model, metadata
+        except Exception:
+            pass
+    return None, None
+
+
 @st.cache_data(ttl=3600)
-def load_city_data():
-    """Load city data from database."""
-    engine = get_engine()
-    query = """
-        SELECT city, state, state_code, population, median_age, avg_household_size
-        FROM dbo.cities
-    """
-    return pd.read_sql(query, engine)
+def load_features():
+    """Load feature data once and cache."""
+    if load_feature_data:
+        try:
+            return load_feature_data()
+        except Exception:
+            pass
+    
+    # Fallback: load from database
+    try:
+        engine = get_engine()
+        query = """
+            SELECT city, state, state_code, population, median_age, avg_household_size
+            FROM dbo.cities
+        """
+        return pd.read_sql(query, engine)
+    except Exception as e:
+        st.error(f"Failed to load data: {e}")
+        return pd.DataFrame()
 
 
-df_features = load_city_data()
+# Load data
+model, metadata = load_models()
+df_features = load_features()
 
 
 # -------------------------------------------------
-# STYLES
+# SESSION STATE INITIALIZATION
 # -------------------------------------------------
-st.markdown("""
-<style>
-    .hero-section {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
-        border-radius: 16px;
-        margin-bottom: 2rem;
-        color: white;
-    }
-    .hero-title {
-        font-size: 2.5rem;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
-    }
-    .hero-subtitle {
-        font-size: 1rem;
-        opacity: 0.9;
-    }
-    .section-header {
-        font-size: 1.25rem;
-        font-weight: 600;
-        margin: 1.5rem 0 1rem 0;
-    }
-</style>
-""", unsafe_allow_html=True)
+if "current_query" not in st.session_state:
+    st.session_state["current_query"] = ""
+
+if "auto_search" not in st.session_state:
+    st.session_state["auto_search"] = False
+
+if "theme" not in st.session_state:
+    st.session_state["theme"] = "dark"
+
+
+# -------------------------------------------------
+# APPLY CUSTOM CSS
+# -------------------------------------------------
+st.markdown(get_custom_css(st.session_state["theme"]), unsafe_allow_html=True)
 
 
 # -------------------------------------------------
 # SIDEBAR
 # -------------------------------------------------
 with st.sidebar:
-    st.markdown("### Choose View")
-    mode = st.radio("", ["Search", "MLOps Dashboard"], label_visibility="collapsed")
+    # Mode selector
+    mode = st.radio(
+        "Choose view:",
+        ["Search", "MLOps Dashboard"],
+        index=0,
+        label_visibility="visible"
+    )
     
-    st.markdown("### Quick Examples")
-    examples = [
-        "Which city has the highest population?",
-        "Top 10 cities in Texas",
-        "Compare Miami and Dallas",
-        "Life in Denver",
-        "Best cities for families",
-        "How many cities in California?"
-    ]
-    
-    for example in examples:
-        if st.button(example, key=example, use_container_width=True):
-            st.session_state["query"] = example
-            st.rerun()
+    # Quick examples (only for Search mode)
+    if mode == "Search":
+        st.markdown("### Quick Examples")
+        
+        for example in QUICK_EXAMPLES:
+            if st.button(example, key=f"btn_{example}", use_container_width=True):
+                st.session_state["current_query"] = example
+                st.session_state["auto_search"] = True
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # Data info
+        if not df_features.empty:
+            st.markdown(f"""
+            <div style="font-size: 0.8rem; color: #a0aec0;">
+                📊 <strong>{len(df_features):,}</strong> cities loaded<br>
+                🗺️ <strong>{df_features['state'].nunique()}</strong> states covered
+            </div>
+            """, unsafe_allow_html=True)
 
 
 # -------------------------------------------------
-# MAIN CONTENT
+# MAIN CONTENT - MLOps Dashboard
+# -------------------------------------------------
+if mode == "MLOps Dashboard":
+    render_mlops_dashboard()
+    st.stop()
+
+
+# -------------------------------------------------
+# MAIN CONTENT - Search Mode
 # -------------------------------------------------
 if mode == "Search":
     
-    # Hero Section
-    st.markdown(f"""
-    <div class='hero-section'>
-        <div class='hero-title'>{APP_TITLE}</div>
-        <div class='hero-subtitle'>{APP_SUBTITLE}</div>
-    </div>
-    """, unsafe_allow_html=True)
+    # -------------------------------------------------
+    # HERO SECTION
+    # -------------------------------------------------
+    st.markdown(
+        f"""
+        <div class='hero-section'>
+            <div class='hero-title'>{APP_TITLE}</div>
+            <div class='hero-subtitle'>{APP_SUBTITLE}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
     
-    # Search Box
-    col1, col2 = st.columns([4, 1])
-    with col1:
+    # -------------------------------------------------
+    # SEARCH INPUT
+    # -------------------------------------------------
+    left_col, right_col = st.columns([4, 1])
+    
+    with left_col:
         user_query = st.text_input(
             "",
-            value=st.session_state.get("query", ""),
-            placeholder="Ask anything about US cities...",
+            value=st.session_state.get("current_query", ""),
+            placeholder="Ask anything about US cities... (e.g., 'Best cities for families in Texas')",
             label_visibility="collapsed"
         )
-    with col2:
+    
+    with right_col:
         search_clicked = st.button("Search", use_container_width=True)
     
-    # Handle Query
-    if search_clicked and user_query.strip():
-        query = user_query.strip()
-        
-        # Clear previous query from session
-        if "query" in st.session_state:
-            del st.session_state["query"]
-        
-        # Classify query with LLM
-        with st.spinner("Understanding your question..."):
-            intent = classify_query(query)
-        
-        # Handle the query based on intent
-        handle_query(query, intent, df_features)
-
-else:
-    # MLOps Dashboard
-    st.markdown("""
-    <div class='hero-section'>
-        <div class='hero-title'>MLOps Dashboard</div>
-        <div class='hero-subtitle'>Monitor model health, drift, and retraining.</div>
-    </div>
-    """, unsafe_allow_html=True)
+    # Auto-search trigger (from sidebar examples)
+    if st.session_state.get("auto_search", False):
+        search_clicked = True
+        st.session_state["auto_search"] = False
     
-    st.info("MLOps dashboard coming soon...")
+    # -------------------------------------------------
+    # QUERY PROCESSING
+    # -------------------------------------------------
+    if search_clicked and user_query.strip():
+        query_original = user_query.strip()
+        
+        # Clear the stored query to prevent re-runs
+        st.session_state["current_query"] = ""
+        
+        # -------------------------------------------------
+        # STEP 1: Spelling Correction
+        # -------------------------------------------------
+        city_list = df_features["city"].unique().tolist() if not df_features.empty else []
+        query, corrections = correct_query_spelling(query_original, city_list)
+        
+        if corrections:
+            correction_text = ", ".join([f'"{old}" → "{new}"' for old, new in corrections])
+            st.info(f"🔄 Auto-corrected: {correction_text}")
+        
+        # -------------------------------------------------
+        # STEP 2: Safety Checks
+        # -------------------------------------------------
+        if is_nonsense_query(query):
+            st.error("❌ I couldn't understand that question. Try asking about US cities.")
+            st.stop()
+        
+        if is_world_query(query):
+            st.error("❌ This system only supports US cities. Please ask about cities in the United States.")
+            st.stop()
+        
+        # -------------------------------------------------
+        # STEP 3: LLM Classification
+        # -------------------------------------------------
+        with st.spinner("Understanding your question..."):
+            classification = classify_query_with_llm(query)
+        
+        # Debug: Show classification (can be removed in production)
+        # with st.expander("🔍 Debug: Query Classification", expanded=False):
+        #     st.json(classification)
+        
+        # -------------------------------------------------
+        # STEP 4: Handle Query
+        # -------------------------------------------------
+        handle_query(
+            query=query,
+            classification=classification,
+            df_features=df_features,
+            get_engine_func=get_engine,
+            smart_route_func=smart_route,
+            lifestyle_rag_func=try_build_lifestyle_card,
+            classify_intent_func=classify_query_intent
+        )
+    
+    # -------------------------------------------------
+    # EMPTY STATE
+    # -------------------------------------------------
+    elif not search_clicked:
+        st.markdown("""
+        <div style="
+            text-align: center;
+            padding: 3rem 2rem;
+            color: #a0aec0;
+        ">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🏙️</div>
+            <div style="font-size: 1.1rem; margin-bottom: 0.5rem;">
+                Ask me anything about US cities
+            </div>
+            <div style="font-size: 0.9rem; opacity: 0.8;">
+                Try clicking an example from the sidebar or type your own question
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Feature highlights
+        st.markdown("---")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("""
+            <div style="text-align: center; padding: 1.5rem;">
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">📊</div>
+                <div style="font-weight: 600; margin-bottom: 0.25rem;">City Data</div>
+                <div style="font-size: 0.85rem; color: #a0aec0;">
+                    Population, demographics, and more
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("""
+            <div style="text-align: center; padding: 1.5rem;">
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">🤖</div>
+                <div style="font-weight: 600; margin-bottom: 0.25rem;">AI-Powered</div>
+                <div style="font-size: 0.85rem; color: #a0aec0;">
+                    Smart recommendations and insights
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown("""
+            <div style="text-align: center; padding: 1.5rem;">
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">⚡</div>
+                <div style="font-weight: 600; margin-bottom: 0.25rem;">Instant Results</div>
+                <div style="font-size: 0.85rem; color: #a0aec0;">
+                    Fast answers to any city question
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Sample queries
+        st.markdown("---")
+        st.markdown("<div style='text-align: center; margin-bottom: 1rem;'><strong>Try asking:</strong></div>", unsafe_allow_html=True)
+        
+        sample_queries = [
+            "Which city has the highest population?",
+            "Best cities for families in California",
+            "Compare Austin and Denver",
+            "Top 10 largest cities in Texas",
+            "Life in Miami",
+        ]
+        
+        cols = st.columns(len(sample_queries))
+        for i, sample in enumerate(sample_queries):
+            with cols[i]:
+                if st.button(sample, key=f"sample_{i}", use_container_width=True):
+                    st.session_state["current_query"] = sample
+                    st.session_state["auto_search"] = True
+                    st.rerun()
+
+
+# -------------------------------------------------
+# FOOTER
+# -------------------------------------------------
+st.markdown("---")
+st.markdown("""
+<div style="text-align: center; font-size: 0.8rem; color: #a0aec0; padding: 1rem;">
+    CitySearch AI — Powered by GPT-4 and ML Clustering<br>
+    <span style="opacity: 0.7;">Ask anything about US cities</span>
+</div>
+""", unsafe_allow_html=True)
