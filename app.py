@@ -259,55 +259,42 @@ if mode == "Search":
     # -------------------------------------------------
     # EMPTY STATE
     # -------------------------------------------------
+# -------------------------------------------------
+    # EMPTY STATE
+    # -------------------------------------------------
     elif not search_clicked:
-        # st.markdown("""
-        # <div style="
-        #     text-align: center;
-        #     padding: 3rem 2rem;
-        #     color: #a0aec0;
-        # ">
-        #     <div style="font-size: 1.1rem; margin-bottom: 0.5rem;">
-        #         Ask me anything about US cities
-        #     </div>
-        #     <div style="font-size: 0.9rem; opacity: 0.8;">
-        #         Try clicking an example from the sidebar or type your own question
-        #     </div>
-        # </div>
-        # """, unsafe_allow_html=True)
-        
-        # Feature highlights
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.markdown("""
-            <div style="text-align: center; padding: 1.5rem;">
-                <div style="font-weight: 600; margin-bottom: 0.1rem;">City Data</div>
-                <div style="font-size: 0.85rem; color: #a0aec0;">
-                    Population, demographics, and more
-                </div>
+        # Feature highlights - at the top with minimal spacing
+        st.markdown("""
+        <div style="display: flex; justify-content: center; gap: 3rem; margin-top: 1rem; margin-bottom: 0.5rem;">
+            <div style="text-align: center;">
+                <div style="font-weight: 600; font-size: 0.95rem;">City Data</div>
+                <div style="font-size: 0.8rem; color: #a0aec0;">Population, demographics, and more</div>
             </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown("""
-            <div style="text-align: center; padding: 1.5rem;">
-                <div style="font-weight: 600; margin-bottom: 0.1rem;">AI-Powered</div>
-                <div style="font-size: 0.85rem; color: #a0aec0;">
-                    Smart recommendations and insights
-                </div>
+            <div style="text-align: center;">
+                <div style="font-weight: 600; font-size: 0.95rem;">AI-Powered</div>
+                <div style="font-size: 0.8rem; color: #a0aec0;">Smart recommendations and insights</div>
             </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown("""
-            <div style="text-align: center; padding: 1.5rem;">
-                <div style="font-weight: 600; margin-bottom: 0.1rem;">Instant Results</div>
-                <div style="font-size: 0.85rem; color: #a0aec0;">
-                    Fast answers to any city question
-                </div>
+            <div style="text-align: center;">
+                <div style="font-weight: 600; font-size: 0.95rem;">Instant Results</div>
+                <div style="font-size: 0.8rem; color: #a0aec0;">Fast answers to any city question</div>
             </div>
-            """, unsafe_allow_html=True)
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Divider with reduced spacing
+        st.markdown("<hr style='margin: 1rem 0; border-color: #2d3748;'>", unsafe_allow_html=True)
+        
+        # Main message - compact
+        st.markdown("""
+        <div style="text-align: center; padding: 1rem 2rem; color: #a0aec0;">
+            <div style="font-size: 1rem; margin-bottom: 0.25rem;">
+                Ask me anything about US cities
+            </div>
+            <div style="font-size: 0.85rem; opacity: 0.8;">
+                Try clicking an example from the sidebar or type your own question
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         
 
 # -------------------------------------------------
