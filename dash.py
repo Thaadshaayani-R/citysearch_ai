@@ -1817,7 +1817,13 @@ if mode == "MLOps Dashboard":
 # -------------------------------------------------
 # MAIN LOGIC — SEARCH MODE
 # -------------------------------------------------
+
 if mode == "Search":
+    # Default value for enable_summary (will be overwritten if query is submitted)
+    enable_summary = False
+    response_style = "table"
+    query_type = "data_query"
+    
     if search_clicked and user_query.strip():
         q_original = user_query.strip()
         
@@ -1829,6 +1835,14 @@ if mode == "Search":
         if corrections:
             correction_text = ", ".join([f'"{old}" → "{new}"' for old, new in corrections])
             st.info(f"🔄 Auto-corrected: {correction_text}")
+        
+        # -------------------------------------------------
+        # SMART QUERY CLASSIFICATION (Fully Automatic)
+        # -------------------------------------------------
+        query_info = classify_query_type(q)
+        enable_summary = query_info["needs_ai_summary"]
+        response_style = query_info["response_style"]
+        query_type = query_info["type"]
 
         
         # Safety checks
