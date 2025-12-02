@@ -1,270 +1,475 @@
 """
-UI display components for CitySearch AI.
-All cards, tables, and visual elements.
+CitySearch AI - CSS Styles
+==========================
+All custom CSS styling for the application.
+Supports dark and light themes.
 """
 
-import streamlit as st
-import pandas as pd
-from llm_classifier import get_openai_client
 
-
-def show_single_city_card(city_name: str, state_name: str, metric_value, metric_label: str, rank_label: str, runners_up: list = None):
-    """Display a single city answer card."""
+def get_theme_colors(theme: str = "dark") -> dict:
+    """Get color palette based on theme."""
     
-    # Format value
-    if isinstance(metric_value, (int, float)):
-        if metric_value > 1000:
-            formatted_value = f"{int(metric_value):,}"
-        else:
-            formatted_value = f"{metric_value:.1f}"
+    if theme == "dark":
+        return {
+            "bg_main": "#0f1419",
+            "bg_card": "#1a202c",
+            "bg_input": "#1a202c",
+            "text_primary": "#ffffff",
+            "text_secondary": "#e2e8f0",
+            "text_muted": "#a0aec0",
+            "border_color": "#2d3748",
+            "gradient_start": "#3b4a6b",
+            "gradient_end": "#4a5f7f",
+            "accent_gradient_start": "#5a67d8",
+            "accent_gradient_end": "#7c3aed",
+        }
     else:
-        formatted_value = str(metric_value)
+        return {
+            "bg_main": "#f7fafc",
+            "bg_card": "#ffffff",
+            "bg_input": "#ffffff",
+            "text_primary": "#1a202c",
+            "text_secondary": "#2d3748",
+            "text_muted": "#718096",
+            "border_color": "#e2e8f0",
+            "gradient_start": "#667eea",
+            "gradient_end": "#764ba2",
+            "accent_gradient_start": "#667eea",
+            "accent_gradient_end": "#764ba2",
+        }
+
+
+def get_custom_css(theme: str = "dark") -> str:
+    """Generate complete CSS for the application."""
     
-    # Get state code
-    state_code = state_name[:2].upper() if state_name else ""
+    colors = get_theme_colors(theme)
     
-    st.markdown(f"""
-    <div style="
+    return f"""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    
+    * {{
+        font-family: 'Inter', sans-serif;
+    }}
+        
+    .main {{
+        background-color: {colors['bg_main']};
+        padding: 1rem 2rem;
+    }}
+    
+    /* Remove Streamlit's global top padding */
+    .css-18e3th9 {{
+        padding-top: 0 !important;
+        margin-top: 3rem !important;
+    }}
+
+    /* Remove padding from main content block */
+    .block-container {{
+        padding-top: 0rem !important;
+        margin-top: 3rem !important;
+    }}
+    
+    /* Make "Choose view", "Search", "MLOps Dashboard" smaller */
+    [data-testid="stSidebar"] label {{
+        font-size: 0.2rem !important;
+        line-height: 1.1 !important;
+    }}
+
+    /* Tighten spacing between the two radio options */
+    [data-testid="stSidebar"] div[role="radiogroup"] {{
+        row-gap: 0.2rem !important;
+        margin-bottom: -0.5rem !important;
+    }}
+
+    /* Shrink the radio circle a bit */
+    [data-testid="stSidebar"] input[type="radio"] {{
+        transform: scale(0.8) !important;
+    }}
+
+    .hero-section {{
+        background: linear-gradient(135deg, {colors['gradient_start']} 0%, {colors['gradient_end']} 100%);
+        padding: 1rem 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 1rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }}
+    
+    /* Force Quick Example to stay on ONE LINE */
+    [data-testid="stSidebar"] .stButton>button {{
+        font-size: 0.55rem !important;
+        padding: 0.4rem 0.6rem !important;
+        line-height: 1.0 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        text-align: left !important;
+        justify-content: flex-start !important;
+        align-items: center !important;
+    }}
+
+    /* Also target the inner div */
+    [data-testid="stSidebar"] .stButton>button > div {{
+        font-size: 0.55rem !important;
+        white-space: nowrap !important;
+        text-align: left !important;
+    }}
+
+    /* Also target the inner span */
+    [data-testid="stSidebar"] .stButton>button span {{
+        font-size: 0.55rem !important;
+        white-space: nowrap !important;
+        text-align: left !important;
+    }}
+    
+    /* Reduce spacing between cards */
+    [data-testid="stSidebar"] .stButton {{
+        margin-bottom: -0.6rem !important;
+    }}
+
+    .hero-title {{
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: #ffffff;
+        margin-bottom: 0.5rem;
+        letter-spacing: -0.03em;
+    }}
+    
+    .hero-subtitle {{
+        font-size: 0.8rem;
+        color: #e2e8f0;
+        font-weight: 400;
+        line-height: 1.5;
+        max-width: 1000px;
+    }}
+    
+    .data-container {{
+        background-color: {colors['bg_card']};
+        padding: 1.25rem;
+        border-radius: 8px;
+        margin-top: 1rem;
+        border: 1px solid {colors['border_color']};
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }}
+    
+    .sql-container {{
+        background-color: {colors['bg_card']};
+        padding: 1rem;
+        border-radius: 6px;
+        margin-top: 0.75rem;
+        border: 1px solid {colors['border_color']};
+    }}
+    
+    .metric-card {{
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 16px;
         padding: 2rem;
-        margin-bottom: 1.5rem;
+        border-radius: 16px;
+        border: none;
+        box-shadow: 0 8px 26px rgba(0, 0, 0, 0.25);
+        margin-top: 1rem;
         color: white;
+    }}
+
+    .metric-header {{
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }}
+
+    .metric-grid {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
         text-align: center;
-    ">
-        <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem;">
-            {rank_label}
-        </div>
-        <div style="font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem;">
-            {city_name}, {state_code}
-        </div>
-        <div style="font-size: 2.5rem; font-weight: 700;">
-            {formatted_value}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Runners up
-    if runners_up and len(runners_up) > 0:
-        st.markdown(f"""
-        <div style="
-            padding: 0.75rem 1rem;
-            background: rgba(102, 126, 234, 0.1);
-            border-radius: 8px;
-            font-size: 0.9rem;
-            margin-bottom: 1rem;
-        ">
-            <span style="opacity: 0.7;">Other top cities:</span> {", ".join(runners_up[:4])}
-        </div>
-        """, unsafe_allow_html=True)
+        width: 100%;
+    }}
 
+    .metric-label {{
+        font-size: 0.75rem;
+        opacity: 0.85;
+        font-weight: 600;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+    }}
 
-def show_city_profile_card(city_name: str, state_name: str, row: pd.Series):
-    """Display a beautiful city profile card with AI-generated summary."""
+    .metric-value {{
+        font-size: 2.5rem;
+        font-weight: 800;
+        margin-top: 0.25rem;
+    }}
+
+    /* --- Optimized Result Card --- */
+    .result-card {{
+        background: linear-gradient(135deg, {colors['accent_gradient_start']} 0%, {colors['accent_gradient_end']} 100%);
+        padding: 1rem 1.25rem;
+        border-radius: 12px;
+        margin: 0.8rem 0;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #ffffff;
+    }}
+
+    /* Title (left side) */
+    .result-card-title {{
+        font-size: 1rem;
+        font-weight: 600;
+        margin-bottom: 0.6rem;
+        color: #f1f1f1;
+    }}
+
+    /* Metric label (TOTAL_CITIES) */
+    .result-card-subtitle {{
+        font-size: 0.8rem; 
+        opacity: 0.9;
+        letter-spacing: 1px;
+        margin-bottom: 0.2rem;
+        text-transform: uppercase;
+    }}
+
+    /* Value (57) */
+    .result-card-value {{
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: #ffffff;
+    }}
+
+    .insight-card {{
+        background: linear-gradient(135deg, {colors['accent_gradient_start']} 0%, {colors['accent_gradient_end']} 100%);
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }}
     
-    population = row.get('population', 'N/A')
-    median_age = row.get('median_age', 'N/A')
-    household_size = row.get('avg_household_size', 'N/A')
+    .insight-label {{
+        font-size: 0.65rem;
+        color: rgba(255, 255, 255, 0.75);
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        margin-bottom: 0.5rem;
+    }}
     
-    # Format population
-    if isinstance(population, (int, float)):
-        population_display = f"{int(population):,}"
-    else:
-        population_display = str(population)
+    .insight-title {{
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: #ffffff;
+        margin-bottom: 0.75rem;
+        letter-spacing: -0.02em;
+    }}
     
-    # Main card
-    st.markdown(f"""
-    <div style="
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 16px;
-        padding: 2rem;
-        margin-bottom: 1.5rem;
+    .insight-text {{
+        font-size: 0.95rem;
+        color: rgba(255, 255, 255, 0.95);
+        line-height: 1.6;
+    }}
+    
+    .lifestyle-card {{
+        background: linear-gradient(135deg, {colors['accent_gradient_start']} 0%, {colors['accent_gradient_end']} 100%);
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }}
+    
+    .section-header {{
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: {colors['text_primary']};
+        margin: 0.3rem 0 0.3rem 0 !important;
+        padding-bottom: 0.3rem;
+        border-bottom: 2px solid {colors['border_color']};
+        letter-spacing: -0.01em;
+    }}
+    
+    .stButton>button {{
+        background: linear-gradient(135deg, {colors['accent_gradient_start']} 0%, {colors['accent_gradient_end']} 100%);
         color: white;
-    ">
-        <h2 style="margin: 0; font-size: 2rem; font-weight: 700;">{city_name}, {state_name}</h2>
-        <div style="display: flex; flex-wrap: wrap; gap: 2rem; margin-top: 1.5rem;">
-            <div>
-                <div style="font-size: 0.8rem; opacity: 0.8;">Population</div>
-                <div style="font-size: 1.5rem; font-weight: 600;">{population_display}</div>
-            </div>
-            <div>
-                <div style="font-size: 0.8rem; opacity: 0.8;">Median Age</div>
-                <div style="font-size: 1.5rem; font-weight: 600;">{median_age}</div>
-            </div>
-            <div>
-                <div style="font-size: 0.8rem; opacity: 0.8;">Household Size</div>
-                <div style="font-size: 1.5rem; font-weight: 600;">{household_size}</div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+        border: none;
+        border-radius: 6px;
+        padding: 0.6rem 1.25rem;
+        font-weight: 700;
+        font-size: 0.85rem;
+        transition: all 0.2s;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        letter-spacing: 0.02em;
+    }}
     
-    # AI Summary
-    client = get_openai_client()
-    if client:
-        with st.spinner("Generating city profile..."):
-            prompt = f"""
-            Write a 2-3 sentence profile for {city_name}, {state_name}.
-            Population: {population_display}, Median Age: {median_age}, Household Size: {household_size}
-            Focus on lifestyle, culture, and what makes this city unique. Be concise.
-            """
-            
-            try:
-                response = client.chat.completions.create(
-                    model="gpt-4.1-mini",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.7,
-                    max_tokens=150
-                )
-                summary = response.choices[0].message.content.strip()
-                
-                st.markdown(f"""
-                <div style="
-                    background: rgba(102, 126, 234, 0.1);
-                    border-left: 4px solid #667eea;
-                    border-radius: 8px;
-                    padding: 1.25rem;
-                    margin-bottom: 1.5rem;
-                    font-style: italic;
-                ">
-                    "{summary}"
-                </div>
-                """, unsafe_allow_html=True)
-            except Exception:
-                pass
-        
-        # Highlights
-        with st.spinner("Generating highlights..."):
-            prompt = f"""
-            Give exactly 3 short highlights about {city_name}, {state_name}.
-            Each highlight: 5-8 words maximum. No bullets or numbers.
-            """
-            
-            try:
-                response = client.chat.completions.create(
-                    model="gpt-4.1-mini",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.7,
-                    max_tokens=100
-                )
-                highlights = response.choices[0].message.content.strip().split('\n')
-                highlights = [h.strip().lstrip('•-*0123456789. ') for h in highlights if h.strip()][:3]
-                
-                st.markdown("<h4 style='color: #667eea;'>✨ Highlights</h4>", unsafe_allow_html=True)
-                
-                for h in highlights:
-                    st.markdown(f"<div style='padding: 0.3rem 0;'><span style='color: #667eea;'>✓</span> {h}</div>", unsafe_allow_html=True)
-            except Exception:
-                pass
-
-
-def show_comparison_card(city1_row: pd.Series, city2_row: pd.Series):
-    """Display city comparison."""
+    .stButton>button:hover {{
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }}
     
-    metrics = [
-        ("Population", "population", "{:,}"),
-        ("Median Age", "median_age", "{:.1f}"),
-        ("Household Size", "avg_household_size", "{:.2f}")
-    ]
+    .sidebar .stButton>button {{
+        background: {colors['bg_card']};
+        color: {colors['text_secondary']};
+        border: 1px solid {colors['border_color']};
+        font-weight: 500;
+        padding: 0.5rem 1rem;
+        font-size: 0.8rem;
+    }}
     
-    st.markdown(f"""
-    <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
-        <div style="flex: 1; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; padding: 1.5rem; color: white; text-align: center;">
-            <h3 style="margin: 0;">{city1_row['city']}, {city1_row['state']}</h3>
-        </div>
-        <div style="display: flex; align-items: center; font-size: 1.5rem; font-weight: bold; color: #667eea;">VS</div>
-        <div style="flex: 1; background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); border-radius: 16px; padding: 1.5rem; color: white; text-align: center;">
-            <h3 style="margin: 0;">{city2_row['city']}, {city2_row['state']}</h3>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    .sidebar .stButton>button:hover {{
+        background: {colors['border_color']};
+    }}
     
-    # Comparison table
-    for label, col, fmt in metrics:
-        val1 = city1_row.get(col, 0)
-        val2 = city2_row.get(col, 0)
-        
-        formatted1 = fmt.format(val1) if isinstance(val1, (int, float)) else str(val1)
-        formatted2 = fmt.format(val2) if isinstance(val2, (int, float)) else str(val2)
-        
-        # Determine winner
-        if val1 > val2:
-            style1, style2 = "font-weight: 700; color: #667eea;", ""
-        elif val2 > val1:
-            style1, style2 = "", "font-weight: 700; color: #11998e;"
-        else:
-            style1, style2 = "", ""
-        
-        st.markdown(f"""
-        <div style="display: flex; padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
-            <div style="flex: 1; text-align: center; {style1}">{formatted1}</div>
-            <div style="flex: 1; text-align: center; font-weight: 600; opacity: 0.7;">{label}</div>
-            <div style="flex: 1; text-align: center; {style2}">{formatted2}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-
-def show_aggregate_card(label: str, value: str, sub_label: str = ""):
-    """Display an aggregate result card."""
+    div[data-testid="stMetricValue"] {{
+        font-size: 1.4rem;
+        font-weight: 800;
+        color: {colors['text_primary']};
+    }}
     
-    st.markdown(f"""
-    <div style="
+    div[data-testid="stMetricLabel"] {{
+        font-size: 0.7rem;
+        color: {colors['text_muted']};
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }}
+    
+    [data-testid="stSidebar"] {{
+        background-color: {colors['bg_card']};
+        padding: 1rem;
+    }}
+    
+    [data-testid="stSidebar"] .stMarkdown {{
+        color: {colors['text_secondary']};
+    }}
+    
+    .stTextInput input {{
+        background-color: {colors['bg_input']};
+        color: {colors['text_primary']};
+        border: 1px solid {colors['border_color']};
+        border-radius: 6px;
+        font-size: 0.9rem;
+        padding: 0.6rem 1rem;
+    }}
+    
+    .stTextInput input:focus {{
+        border-color: {colors['accent_gradient_start']};
+        box-shadow: 0 0 0 1px {colors['accent_gradient_start']};
+    }}
+    
+    .stCheckbox {{
+        color: {colors['text_secondary']};
+    }}
+    
+    .dataframe {{
+        font-size: 0.85rem;
+    }}
+    
+    .stAlert {{
+        background-color: {colors['bg_card']};
+        border: 1px solid {colors['border_color']};
+        color: {colors['text_secondary']};
+        border-radius: 6px;
+    }}
+    
+    .download-btn {{
+        background: {colors['bg_card']};
+        border: 1px solid {colors['border_color']};
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        color: {colors['text_primary']};
+        font-weight: 600;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }}
+    
+    .download-btn:hover {{
+        background: {colors['border_color']};
+    }}
+    
+    /* AI Response Card */
+    .ai-response-card {{
+        background: rgba(102, 126, 234, 0.1);
+        border-left: 4px solid #667eea;
+        border-radius: 8px;
+        padding: 1.25rem;
+        margin: 1rem 0;
+    }}
+    
+    .ai-response-label {{
+        font-size: 0.8rem;
+        color: #667eea;
+        margin-bottom: 0.5rem;
+    }}
+    
+    /* Out of Scope Card */
+    .out-of-scope-card {{
+        background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin: 1rem 0;
+        color: white;
+    }}
+    
+    /* Success Card (Green) */
+    .success-card {{
         background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
         border-radius: 16px;
         padding: 2rem;
         margin-bottom: 1.5rem;
         color: white;
         text-align: center;
-    ">
-        <div style="font-size: 0.9rem; opacity: 0.9; margin-bottom: 0.5rem;">{label}</div>
-        <div style="font-size: 3rem; font-weight: 700;">{value}</div>
-        <div style="font-size: 0.85rem; opacity: 0.8; margin-top: 0.5rem;">{sub_label}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-def show_city_table(df: pd.DataFrame, title: str = "Results"):
-    """Display a city table with download option."""
+    }}
     
-    st.markdown(f"<div class='section-header'>{title}</div>", unsafe_allow_html=True)
-    st.dataframe(df, use_container_width=True, height=400)
+    /* Profile Card (Purple) */
+    .profile-card {{
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        color: white;
+    }}
     
-    csv = df.to_csv(index=False)
-    st.download_button(
-        label="📥 Download CSV",
-        data=csv,
-        file_name="city_results.csv",
-        mime="text/csv"
-    )
-
-
-def show_ai_response(message: str, is_fallback: bool = False):
-    """Display an AI-generated response."""
+    /* Highlight Item */
+    .highlight-item {{
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0;
+    }}
     
-    label = "ℹ️ This answer is from AI (not from our database)" if is_fallback else ""
+    .highlight-check {{
+        color: #667eea;
+    }}
     
-    st.markdown(f"""
-    <div style="
-        background: rgba(102, 126, 234, 0.1);
-        border-left: 4px solid #667eea;
-        border-radius: 8px;
-        padding: 1.25rem;
-        margin: 1rem 0;
-    ">
-        {"<div style='font-size: 0.8rem; color: #667eea; margin-bottom: 0.5rem;'>" + label + "</div>" if label else ""}
-        <div>{message}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-def show_insight_bullets(insights: list):
-    """Display insight bullet points."""
+    /* Comparison Cards */
+    .comparison-container {{
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }}
     
-    for insight in insights[:3]:
-        insight = insight.strip().lstrip('•-*0123456789. ')
-        st.markdown(f"""
-        <div style="display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.4rem 0;">
-            <span style="color: #667eea;">•</span>
-            <span>{insight}</span>
-        </div>
-        """, unsafe_allow_html=True)
+    .comparison-card {{
+        flex: 1;
+        border-radius: 16px;
+        padding: 1.5rem;
+        color: white;
+        text-align: center;
+    }}
+    
+    .comparison-card-left {{
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }}
+    
+    .comparison-card-right {{
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    }}
+    
+    .vs-badge {{
+        display: flex;
+        align-items: center;
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #667eea;
+    }}
+    </style>
+    """
