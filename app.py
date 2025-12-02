@@ -277,9 +277,7 @@ if mode == "Search":
             </div>
         </div>
         """, unsafe_allow_html=True)
-        
-        # Divider with reduced spacing
-        st.markdown("<hr style='margin: 1rem 0; border-color: #2d3748;'>", unsafe_allow_html=True)
+
         
         
 
