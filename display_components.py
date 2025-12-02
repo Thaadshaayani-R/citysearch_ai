@@ -1,475 +1,1128 @@
 """
-CitySearch AI - CSS Styles
-==========================
-All custom CSS styling for the application.
-Supports dark and light themes.
+CitySearch AI - Display Components
+===================================
+All UI display functions for rendering cards, tables, charts, and insights.
 """
 
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from sklearn.decomposition import PCA
 
-def get_theme_colors(theme: str = "dark") -> dict:
-    """Get color palette based on theme."""
-    
-    if theme == "dark":
-        return {
-            "bg_main": "#0f1419",
-            "bg_card": "#1a202c",
-            "bg_input": "#1a202c",
-            "text_primary": "#ffffff",
-            "text_secondary": "#e2e8f0",
-            "text_muted": "#a0aec0",
-            "border_color": "#2d3748",
-            "gradient_start": "#3b4a6b",
-            "gradient_end": "#4a5f7f",
-            "accent_gradient_start": "#5a67d8",
-            "accent_gradient_end": "#7c3aed",
-        }
-    else:
-        return {
-            "bg_main": "#f7fafc",
-            "bg_card": "#ffffff",
-            "bg_input": "#ffffff",
-            "text_primary": "#1a202c",
-            "text_secondary": "#2d3748",
-            "text_muted": "#718096",
-            "border_color": "#e2e8f0",
-            "gradient_start": "#667eea",
-            "gradient_end": "#764ba2",
-            "accent_gradient_start": "#667eea",
-            "accent_gradient_end": "#764ba2",
-        }
+from config import LLM_MODEL, LLM_TEMPERATURE_SUMMARY, LLM_MAX_TOKENS_SUMMARY, LLM_MAX_TOKENS_COMPARISON
+from utils import convert_markdown_to_html, format_population, format_age, format_household_size, convert_df_to_csv
 
 
-def get_custom_css(theme: str = "dark") -> str:
-    """Generate complete CSS for the application."""
-    
-    colors = get_theme_colors(theme)
-    
-    return f"""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-    
-    * {{
-        font-family: 'Inter', sans-serif;
-    }}
-        
-    .main {{
-        background-color: {colors['bg_main']};
-        padding: 1rem 2rem;
-    }}
-    
-    /* Remove Streamlit's global top padding */
-    .css-18e3th9 {{
-        padding-top: 0 !important;
-        margin-top: 3rem !important;
-    }}
+def get_openai_client():
+    """Get OpenAI client from secrets."""
+    try:
+        from openai import OpenAI
+        api_key = st.secrets.get("OPENAI_API_KEY")
+        if api_key:
+            return OpenAI(api_key=api_key)
+    except Exception:
+        pass
+    return None
 
-    /* Remove padding from main content block */
-    .block-container {{
-        padding-top: 0rem !important;
-        margin-top: 3rem !important;
-    }}
-    
-    /* Make "Choose view", "Search", "MLOps Dashboard" smaller */
-    [data-testid="stSidebar"] label {{
-        font-size: 0.2rem !important;
-        line-height: 1.1 !important;
-    }}
 
-    /* Tighten spacing between the two radio options */
-    [data-testid="stSidebar"] div[role="radiogroup"] {{
-        row-gap: 0.2rem !important;
-        margin-bottom: -0.5rem !important;
-    }}
-
-    /* Shrink the radio circle a bit */
-    [data-testid="stSidebar"] input[type="radio"] {{
-        transform: scale(0.8) !important;
-    }}
-
-    .hero-section {{
-        background: linear-gradient(135deg, {colors['gradient_start']} 0%, {colors['gradient_end']} 100%);
-        padding: 1rem 1.5rem;
-        border-radius: 12px;
-        margin-bottom: 1rem;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-    }}
-    
-    /* Force Quick Example to stay on ONE LINE */
-    [data-testid="stSidebar"] .stButton>button {{
-        font-size: 0.55rem !important;
-        padding: 0.4rem 0.6rem !important;
-        line-height: 1.0 !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        text-align: left !important;
-        justify-content: flex-start !important;
-        align-items: center !important;
-    }}
-
-    /* Also target the inner div */
-    [data-testid="stSidebar"] .stButton>button > div {{
-        font-size: 0.55rem !important;
-        white-space: nowrap !important;
-        text-align: left !important;
-    }}
-
-    /* Also target the inner span */
-    [data-testid="stSidebar"] .stButton>button span {{
-        font-size: 0.55rem !important;
-        white-space: nowrap !important;
-        text-align: left !important;
-    }}
-    
-    /* Reduce spacing between cards */
-    [data-testid="stSidebar"] .stButton {{
-        margin-bottom: -0.6rem !important;
-    }}
-
-    .hero-title {{
-        font-size: 1.5rem;
-        font-weight: 800;
-        color: #ffffff;
-        margin-bottom: 0.5rem;
-        letter-spacing: -0.03em;
-    }}
-    
-    .hero-subtitle {{
-        font-size: 0.8rem;
-        color: #e2e8f0;
-        font-weight: 400;
-        line-height: 1.5;
-        max-width: 1000px;
-    }}
-    
-    .data-container {{
-        background-color: {colors['bg_card']};
-        padding: 1.25rem;
-        border-radius: 8px;
-        margin-top: 1rem;
-        border: 1px solid {colors['border_color']};
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    }}
-    
-    .sql-container {{
-        background-color: {colors['bg_card']};
-        padding: 1rem;
-        border-radius: 6px;
-        margin-top: 0.75rem;
-        border: 1px solid {colors['border_color']};
-    }}
-    
-    .metric-card {{
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
-        border-radius: 16px;
-        border: none;
-        box-shadow: 0 8px 26px rgba(0, 0, 0, 0.25);
-        margin-top: 1rem;
-        color: white;
-    }}
-
-    .metric-header {{
-        font-size: 1.25rem;
-        font-weight: 700;
-        margin-bottom: 1.5rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }}
-
-    .metric-grid {{
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        text-align: center;
-        width: 100%;
-    }}
-
-    .metric-label {{
-        font-size: 0.75rem;
-        opacity: 0.85;
-        font-weight: 600;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
-    }}
-
-    .metric-value {{
-        font-size: 2.5rem;
-        font-weight: 800;
-        margin-top: 0.25rem;
-    }}
-
-    /* --- Optimized Result Card --- */
-    .result-card {{
-        background: linear-gradient(135deg, {colors['accent_gradient_start']} 0%, {colors['accent_gradient_end']} 100%);
-        padding: 1rem 1.25rem;
-        border-radius: 12px;
-        margin: 0.8rem 0;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        color: #ffffff;
-    }}
-
-    /* Title (left side) */
-    .result-card-title {{
-        font-size: 1rem;
-        font-weight: 600;
-        margin-bottom: 0.6rem;
-        color: #f1f1f1;
-    }}
-
-    /* Metric label (TOTAL_CITIES) */
-    .result-card-subtitle {{
-        font-size: 0.8rem; 
-        opacity: 0.9;
-        letter-spacing: 1px;
-        margin-bottom: 0.2rem;
-        text-transform: uppercase;
-    }}
-
-    /* Value (57) */
-    .result-card-value {{
-        font-size: 1.8rem;
-        font-weight: 800;
-        color: #ffffff;
-    }}
-
-    .insight-card {{
-        background: linear-gradient(135deg, {colors['accent_gradient_start']} 0%, {colors['accent_gradient_end']} 100%);
-        padding: 1.5rem;
-        border-radius: 8px;
-        margin: 1rem 0;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-    }}
-    
-    .insight-label {{
-        font-size: 0.65rem;
-        color: rgba(255, 255, 255, 0.75);
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        margin-bottom: 0.5rem;
-    }}
-    
-    .insight-title {{
-        font-size: 1.5rem;
-        font-weight: 800;
-        color: #ffffff;
-        margin-bottom: 0.75rem;
-        letter-spacing: -0.02em;
-    }}
-    
-    .insight-text {{
-        font-size: 0.95rem;
-        color: rgba(255, 255, 255, 0.95);
-        line-height: 1.6;
-    }}
-    
-    .lifestyle-card {{
-        background: linear-gradient(135deg, {colors['accent_gradient_start']} 0%, {colors['accent_gradient_end']} 100%);
-        padding: 1.5rem;
-        border-radius: 8px;
-        margin: 1rem 0;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-    }}
-    
-    .section-header {{
-        font-size: 1.1rem;
-        font-weight: 700;
-        color: {colors['text_primary']};
-        margin: 0.3rem 0 0.3rem 0 !important;
-        padding-bottom: 0.3rem;
-        border-bottom: 2px solid {colors['border_color']};
-        letter-spacing: -0.01em;
-    }}
-    
-    .stButton>button {{
-        background: linear-gradient(135deg, {colors['accent_gradient_start']} 0%, {colors['accent_gradient_end']} 100%);
-        color: white;
-        border: none;
-        border-radius: 6px;
-        padding: 0.6rem 1.25rem;
-        font-weight: 700;
-        font-size: 0.85rem;
-        transition: all 0.2s;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-        letter-spacing: 0.02em;
-    }}
-    
-    .stButton>button:hover {{
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    }}
-    
-    .sidebar .stButton>button {{
-        background: {colors['bg_card']};
-        color: {colors['text_secondary']};
-        border: 1px solid {colors['border_color']};
-        font-weight: 500;
-        padding: 0.5rem 1rem;
-        font-size: 0.8rem;
-    }}
-    
-    .sidebar .stButton>button:hover {{
-        background: {colors['border_color']};
-    }}
-    
-    div[data-testid="stMetricValue"] {{
-        font-size: 1.4rem;
-        font-weight: 800;
-        color: {colors['text_primary']};
-    }}
-    
-    div[data-testid="stMetricLabel"] {{
-        font-size: 0.7rem;
-        color: {colors['text_muted']};
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-    }}
-    
-    [data-testid="stSidebar"] {{
-        background-color: {colors['bg_card']};
-        padding: 1rem;
-    }}
-    
-    [data-testid="stSidebar"] .stMarkdown {{
-        color: {colors['text_secondary']};
-    }}
-    
-    .stTextInput input {{
-        background-color: {colors['bg_input']};
-        color: {colors['text_primary']};
-        border: 1px solid {colors['border_color']};
-        border-radius: 6px;
-        font-size: 0.9rem;
-        padding: 0.6rem 1rem;
-    }}
-    
-    .stTextInput input:focus {{
-        border-color: {colors['accent_gradient_start']};
-        box-shadow: 0 0 0 1px {colors['accent_gradient_start']};
-    }}
-    
-    .stCheckbox {{
-        color: {colors['text_secondary']};
-    }}
-    
-    .dataframe {{
-        font-size: 0.85rem;
-    }}
-    
-    .stAlert {{
-        background-color: {colors['bg_card']};
-        border: 1px solid {colors['border_color']};
-        color: {colors['text_secondary']};
-        border-radius: 6px;
-    }}
-    
-    .download-btn {{
-        background: {colors['bg_card']};
-        border: 1px solid {colors['border_color']};
-        padding: 0.5rem 1rem;
-        border-radius: 6px;
-        color: {colors['text_primary']};
-        font-weight: 600;
-        font-size: 0.85rem;
-        cursor: pointer;
-        transition: all 0.2s;
-    }}
-    
-    .download-btn:hover {{
-        background: {colors['border_color']};
-    }}
-    
-    /* AI Response Card */
-    .ai-response-card {{
-        background: rgba(102, 126, 234, 0.1);
-        border-left: 4px solid #667eea;
-        border-radius: 8px;
-        padding: 1.25rem;
-        margin: 1rem 0;
-    }}
-    
-    .ai-response-label {{
-        font-size: 0.8rem;
-        color: #667eea;
-        margin-bottom: 0.5rem;
-    }}
-    
-    /* Out of Scope Card */
-    .out-of-scope-card {{
-        background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
-        padding: 1.5rem;
-        border-radius: 8px;
-        margin: 1rem 0;
-        color: white;
-    }}
-    
-    /* Success Card (Green) */
-    .success-card {{
-        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-        border-radius: 16px;
-        padding: 2rem;
-        margin-bottom: 1.5rem;
-        color: white;
-        text-align: center;
-    }}
-    
-    /* Profile Card (Purple) */
-    .profile-card {{
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 16px;
-        padding: 2rem;
-        margin-bottom: 1.5rem;
-        color: white;
-    }}
-    
-    /* Highlight Item */
-    .highlight-item {{
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 0;
-    }}
-    
-    .highlight-check {{
-        color: #667eea;
-    }}
-    
-    /* Comparison Cards */
-    .comparison-container {{
-        display: flex;
-        gap: 1rem;
-        margin-bottom: 1.5rem;
-    }}
-    
-    .comparison-card {{
-        flex: 1;
-        border-radius: 16px;
-        padding: 1.5rem;
-        color: white;
-        text-align: center;
-    }}
-    
-    .comparison-card-left {{
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }}
-    
-    .comparison-card-right {{
-        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-    }}
-    
-    .vs-badge {{
-        display: flex;
-        align-items: center;
-        font-size: 1.5rem;
-        font-weight: bold;
-        color: #667eea;
-    }}
-    </style>
+# -------------------------------------------------
+# CITY PROFILE CARD
+# -------------------------------------------------
+def show_city_profile_card(city_name: str, state_name: str, row: pd.Series):
     """
+    Display a beautiful city profile card with AI-generated summary.
+    """
+    
+    # Get values safely (handle missing columns)
+    population = row.get('population', 'N/A')
+    median_age = row.get('median_age', 'N/A')
+    household_size = row.get('avg_household_size', 'N/A')
+    state_code = row.get('state_code', state_name[:2].upper() if state_name else 'N/A')
+    
+    # Format population with commas if it's a number
+    if isinstance(population, (int, float)):
+        population_display = f"{int(population):,}"
+    else:
+        population_display = str(population)
+    
+    # 1. City Overview Card
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        color: white;
+    ">
+        <h2 style="margin: 0; font-size: 2rem; font-weight: 700;">{city_name}, {state_name}</h2>
+        <div style="display: flex; flex-wrap: wrap; gap: 2rem; margin-top: 1.5rem;">
+            <div>
+                <div style="font-size: 0.8rem; opacity: 0.8;">Population</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{population_display}</div>
+            </div>
+            <div>
+                <div style="font-size: 0.8rem; opacity: 0.8;">Median Age</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{median_age}</div>
+            </div>
+            <div>
+                <div style="font-size: 0.8rem; opacity: 0.8;">Household Size</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{household_size}</div>
+            </div>
+            <div>
+                <div style="font-size: 0.8rem; opacity: 0.8;">State</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{state_code}</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 2. AI-Generated Profile Summary
+    client = get_openai_client()
+    if client:
+        with st.spinner("Generating city profile..."):
+            prompt = f"""
+            Write a 2-3 sentence profile for {city_name}, {state_name}.
+            Population: {population_display}
+            Median Age: {median_age}
+            Avg Household Size: {household_size}
+            
+            Focus on lifestyle, culture, and what makes this city unique.
+            Be concise and engaging. No bullet points.
+            """
+            
+            try:
+                response = client.chat.completions.create(
+                    model=LLM_MODEL,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=LLM_TEMPERATURE_SUMMARY,
+                    max_tokens=150
+                )
+                summary = response.choices[0].message.content.strip()
+                
+                st.markdown(f"""
+                <div style="
+                    background: rgba(102, 126, 234, 0.1);
+                    border-left: 4px solid #667eea;
+                    border-radius: 8px;
+                    padding: 1.25rem;
+                    margin-bottom: 1.5rem;
+                    font-style: italic;
+                    line-height: 1.6;
+                ">
+                    "{summary}"
+                </div>
+                """, unsafe_allow_html=True)
+            except Exception as e:
+                pass
+    
+    # 3. Highlights Section (AI-Generated)
+    if client:
+        with st.spinner("Generating highlights..."):
+            prompt = f"""
+            Give exactly 3 short highlights about {city_name}, {state_name}.
+            Each highlight should be 5-8 words maximum.
+            Format: Just the 3 highlights, one per line, no numbers or bullets.
+            
+            Example format:
+            Strong outdoor recreation culture
+            Growing tech and business opportunities
+            Young and active population
+            """
+            
+            try:
+                response = client.chat.completions.create(
+                    model=LLM_MODEL,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=LLM_TEMPERATURE_SUMMARY,
+                    max_tokens=100
+                )
+                highlights = response.choices[0].message.content.strip().split('\n')
+                highlights = [h.strip() for h in highlights if h.strip()][:3]
+                
+                st.markdown("""
+                <div style="margin-bottom: 1rem;">
+                    <h4 style="color: #667eea; margin-bottom: 0.75rem;">✨ Highlights</h4>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                for highlight in highlights:
+                    # Remove any leading bullets or numbers
+                    highlight = highlight.lstrip('•-*0123456789. ')
+                    st.markdown(f"""
+                    <div style="
+                        display: flex;
+                        align-items: center;
+                        gap: 0.5rem;
+                        padding: 0.5rem 0;
+                    ">
+                        <span style="color: #667eea;">✓</span>
+                        <span>{highlight}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+            except Exception as e:
+                pass
+
+
+# -------------------------------------------------
+# SINGLE METRIC CARD (City)
+# -------------------------------------------------
+def show_single_metric_card(city_name: str, state_name: str, metric_name: str, metric_value, row: pd.Series):
+    """
+    Display a beautiful single metric card with context.
+    """
+    
+    # Format the metric value
+    if isinstance(metric_value, (int, float)):
+        if metric_value > 1000:
+            formatted_value = f"{int(metric_value):,}"
+        else:
+            formatted_value = f"{metric_value:.2f}" if isinstance(metric_value, float) else str(metric_value)
+    else:
+        formatted_value = str(metric_value)
+    
+    # Get metric display name
+    metric_display = metric_name.replace("_", " ").title()
+    
+    # Main card
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        color: white;
+        text-align: center;
+    ">
+        <div style="font-size: 1rem; opacity: 0.9; margin-bottom: 0.5rem;">
+            {city_name}, {state_name} — {metric_display}
+        </div>
+        <div style="font-size: 3rem; font-weight: 700; margin-bottom: 0.5rem;">
+            {formatted_value}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # AI-Generated Context
+    client = get_openai_client()
+    if client:
+        with st.spinner("Generating insights..."):
+            population = row.get('population', 'N/A')
+            median_age = row.get('median_age', 'N/A')
+            household_size = row.get('avg_household_size', 'N/A')
+            
+            prompt = f"""
+            The user asked about the {metric_display.lower()} of {city_name}, {state_name}.
+            The value is: {formatted_value}
+            
+            Other city data:
+            - Population: {population}
+            - Median Age: {median_age}
+            - Avg Household Size: {household_size}
+            
+            Give exactly 2 short bullet points (each 8-12 words) providing context about this metric.
+            Focus on comparisons or interesting facts.
+            Format: Just 2 lines starting with bullet points.
+            """
+            
+            try:
+                response = client.chat.completions.create(
+                    model=LLM_MODEL,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=LLM_TEMPERATURE_SUMMARY,
+                    max_tokens=100
+                )
+                insights = response.choices[0].message.content.strip().split('\n')
+                insights = [i.strip() for i in insights if i.strip()][:2]
+                
+                for insight in insights:
+                    insight = insight.lstrip('•-*● ')
+                    st.markdown(f"""
+                    <div style="
+                        display: flex;
+                        align-items: flex-start;
+                        gap: 0.5rem;
+                        padding: 0.4rem 0;
+                        font-size: 0.95rem;
+                    ">
+                        <span style="color: #667eea;">•</span>
+                        <span>{insight}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+            except Exception as e:
+                pass
+
+
+# -------------------------------------------------
+# STATE METRIC CARD
+# -------------------------------------------------
+def show_state_metric_card(state_name: str, metric_name: str, metric_value, city_count: int, state_data: pd.DataFrame):
+    """
+    Display a beautiful state-level metric card with context.
+    """
+    
+    # Format the metric value
+    if isinstance(metric_value, (int, float)):
+        if metric_value > 1000:
+            formatted_value = f"{int(metric_value):,}"
+        else:
+            formatted_value = f"{metric_value:.1f}"
+    else:
+        formatted_value = str(metric_value)
+    
+    # Get metric display name
+    metric_display = metric_name.replace("_", " ").title()
+    
+    # Add label based on metric type
+    if "population" in metric_name.lower():
+        metric_label = "Total Population"
+        sub_label = f"Across {city_count} cities in our database"
+    elif "age" in metric_name.lower():
+        metric_label = "Average Median Age"
+        sub_label = f"Averaged across {city_count} cities"
+    else:
+        metric_label = f"Average {metric_display}"
+        sub_label = f"Averaged across {city_count} cities"
+    
+    # Main card (green gradient for states)
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        color: white;
+        text-align: center;
+    ">
+        <div style="font-size: 1rem; opacity: 0.9; margin-bottom: 0.5rem;">
+            {state_name} — {metric_label}
+        </div>
+        <div style="font-size: 3rem; font-weight: 700; margin-bottom: 0.5rem;">
+            {formatted_value}
+        </div>
+        <div style="font-size: 0.85rem; opacity: 0.8;">
+            {sub_label}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Show top cities for this metric
+    if "population" in metric_name.lower():
+        top_cities = state_data.nlargest(5, "population")[["city", "population"]]
+        st.markdown("""
+        <div style="margin-top: 1rem;">
+            <h4 style="color: #11998e; margin-bottom: 0.75rem;">🏙️ Largest Cities</h4>
+        </div>
+        """, unsafe_allow_html=True)
+    elif "age" in metric_name.lower():
+        top_cities = state_data.nlargest(5, "median_age")[["city", "median_age"]]
+        st.markdown("""
+        <div style="margin-top: 1rem;">
+            <h4 style="color: #11998e; margin-bottom: 0.75rem;">👴 Highest Median Age</h4>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        top_cities = state_data.nlargest(5, "avg_household_size")[["city", "avg_household_size"]]
+        st.markdown("""
+        <div style="margin-top: 1rem;">
+            <h4 style="color: #11998e; margin-bottom: 0.75rem;">👨‍👩‍👧‍👦 Largest Households</h4>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Display top cities
+    for _, city_row in top_cities.iterrows():
+        city_name = city_row.iloc[0]
+        city_value = city_row.iloc[1]
+        
+        if isinstance(city_value, (int, float)) and city_value > 1000:
+            display_value = f"{int(city_value):,}"
+        elif isinstance(city_value, float):
+            display_value = f"{city_value:.1f}"
+        else:
+            display_value = str(city_value)
+        
+        st.markdown(f"""
+        <div style="
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(17, 153, 142, 0.2);
+        ">
+            <span>{city_name}</span>
+            <span style="font-weight: 600;">{display_value}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+# -------------------------------------------------
+# AGGREGATE CARD
+# -------------------------------------------------
+def show_aggregate_card(label: str, value: str, sub_label: str = ""):
+    """Display an aggregate result card."""
+    
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        color: white;
+        text-align: center;
+    ">
+        <div style="font-size: 0.9rem; opacity: 0.9; margin-bottom: 0.5rem;">{label}</div>
+        <div style="font-size: 3rem; font-weight: 700;">{value}</div>
+        <div style="font-size: 0.85rem; opacity: 0.8; margin-top: 0.5rem;">{sub_label}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# -------------------------------------------------
+# SUPERLATIVE CARD (Highest/Lowest)
+# -------------------------------------------------
+def show_superlative_card(city_name: str, state_name: str, metric_value, rank_label: str, 
+                          runners_up: list = None, insights: list = None):
+    """Display a single answer card for superlative questions."""
+    
+    # Format value
+    if isinstance(metric_value, (int, float)):
+        if metric_value > 1000:
+            formatted_value = f"{int(metric_value):,}"
+        else:
+            formatted_value = f"{metric_value:.1f}"
+    else:
+        formatted_value = str(metric_value)
+    
+    # Get state code
+    state_code = state_name[:2].upper() if state_name else ""
+    
+    # Main card
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        color: white;
+        text-align: center;
+    ">
+        <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem;">
+            {rank_label}
+        </div>
+        <div style="font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem;">
+            {city_name}, {state_code}
+        </div>
+        <div style="font-size: 2.5rem; font-weight: 700;">
+            {formatted_value}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Insights
+    if insights:
+        for insight in insights[:2]:
+            st.markdown(f"""
+            <div style="display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.4rem 0;">
+                <span style="color: #667eea;">•</span>
+                <span>{insight}</span>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # Runners up
+    if runners_up and len(runners_up) > 0:
+        runners_text = ", ".join(runners_up[:4])
+        st.markdown(f"""
+        <div style="
+            margin-top: 1rem;
+            padding: 0.75rem 1rem;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 8px;
+            font-size: 0.9rem;
+        ">
+            <span style="opacity: 0.7;">Other top cities:</span> {runners_text}
+        </div>
+        """, unsafe_allow_html=True)
+
+
+# -------------------------------------------------
+# CITY COMPARISON CARD
+# -------------------------------------------------
+def show_city_comparison(city1_row: pd.Series, city2_row: pd.Series, query: str = ""):
+    """Display comprehensive city comparison."""
+    
+    df1, df2 = city1_row, city2_row
+    
+    # Header
+    st.markdown(
+        f"<div class='section-header'>🏆 City Comparison: {df1['city']} vs {df2['city']}</div>",
+        unsafe_allow_html=True
+    )
+    
+    # Side-by-side City Profiles
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(
+            f"""
+            <div class="insight-card">
+                <div class="insight-label">City Profile</div>
+                <div class="insight-title">📍 {df1['city']}, {df1['state']}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        st.metric("Population", f"{int(df1['population']):,}")
+        st.metric("Median Age", f"{df1['median_age']:.1f} years")
+        st.metric("Avg Household Size", f"{df1['avg_household_size']:.2f}")
+        if 'cluster_label' in df1.index and pd.notna(df1.get('cluster_label')):
+            st.metric("Cluster", f"{int(df1['cluster_label'])}")
+        if 'lifestyle_score' in df1.index and pd.notna(df1.get('lifestyle_score')):
+            st.metric("Lifestyle Score", f"{df1['lifestyle_score']:.3f}")
+    
+    with col2:
+        st.markdown(
+            f"""
+            <div class="insight-card">
+                <div class="insight-label">City Profile</div>
+                <div class="insight-title">📍 {df2['city']}, {df2['state']}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        st.metric("Population", f"{int(df2['population']):,}")
+        st.metric("Median Age", f"{df2['median_age']:.1f} years")
+        st.metric("Avg Household Size", f"{df2['avg_household_size']:.2f}")
+        if 'cluster_label' in df2.index and pd.notna(df2.get('cluster_label')):
+            st.metric("Cluster", f"{int(df2['cluster_label'])}")
+        if 'lifestyle_score' in df2.index and pd.notna(df2.get('lifestyle_score')):
+            st.metric("Lifestyle Score", f"{df2['lifestyle_score']:.3f}")
+    
+    # Visual Comparison Chart
+    st.markdown("<div class='section-header'>📊 Visual Comparison</div>", unsafe_allow_html=True)
+    
+    max_pop = max(df1['population'], df2['population'])
+    
+    comparison_data = pd.DataFrame({
+        "Metric": ["Population (scaled)", "Median Age", "Household Size (x10)"],
+        df1['city']: [
+            (df1['population'] / max_pop) * 100,
+            df1['median_age'],
+            df1['avg_household_size'] * 10
+        ],
+        df2['city']: [
+            (df2['population'] / max_pop) * 100,
+            df2['median_age'],
+            df2['avg_household_size'] * 10
+        ]
+    })
+    
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        name=df1['city'],
+        x=comparison_data["Metric"],
+        y=comparison_data[df1['city']],
+        marker_color='#667eea'
+    ))
+    fig.add_trace(go.Bar(
+        name=df2['city'],
+        x=comparison_data["Metric"],
+        y=comparison_data[df2['city']],
+        marker_color='#764ba2'
+    ))
+    fig.update_layout(
+        barmode='group',
+        title="City Metrics Comparison",
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        height=350,
+        margin=dict(l=10, r=10, t=40, b=10),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Radar Chart for Lifestyle Indexes (if available)
+    if all(col in df1.index for col in ['opportunity_index', 'youth_index', 'family_index']):
+        st.markdown("<div class='section-header'>🎯 Lifestyle Profile Comparison</div>", unsafe_allow_html=True)
+        
+        categories = ["Opportunity", "Youth", "Family"]
+        
+        fig_radar = go.Figure()
+        
+        fig_radar.add_trace(go.Scatterpolar(
+            r=[df1.get('opportunity_index', 0), df1.get('youth_index', 0), df1.get('family_index', 0)],
+            theta=categories,
+            fill='toself',
+            name=df1['city'],
+            line_color='#667eea'
+        ))
+        
+        fig_radar.add_trace(go.Scatterpolar(
+            r=[df2.get('opportunity_index', 0), df2.get('youth_index', 0), df2.get('family_index', 0)],
+            theta=categories,
+            fill='toself',
+            name=df2['city'],
+            line_color='#764ba2'
+        ))
+        
+        fig_radar.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
+            showlegend=True,
+            title="Lifestyle Index Comparison",
+            paper_bgcolor="white",
+            height=350,
+            margin=dict(l=40, r=40, t=40, b=40),
+        )
+        st.plotly_chart(fig_radar, use_container_width=True)
+    
+    # AI Analysis & Recommendation
+    _show_comparison_ai_analysis(df1, df2, query)
+    
+    # Download comparison data
+    comparison_df = pd.DataFrame([
+        {
+            "City": df1['city'],
+            "State": df1['state'],
+            "Population": df1['population'],
+            "Median Age": df1['median_age'],
+            "Avg Household Size": df1['avg_household_size'],
+        },
+        {
+            "City": df2['city'],
+            "State": df2['state'],
+            "Population": df2['population'],
+            "Median Age": df2['median_age'],
+            "Avg Household Size": df2['avg_household_size'],
+        }
+    ])
+    
+    csv = convert_df_to_csv(comparison_df)
+    st.download_button(
+        label="📥 Download Comparison Data",
+        data=csv,
+        file_name=f"{df1['city']}_vs_{df2['city']}_comparison.csv",
+        mime="text/csv",
+    )
+
+
+def _show_comparison_ai_analysis(df1: pd.Series, df2: pd.Series, query: str):
+    """Show AI analysis for city comparison."""
+    
+    st.markdown("<div class='section-header'>🤖 AI Analysis & Recommendation</div>", unsafe_allow_html=True)
+    
+    client = get_openai_client()
+    if not client:
+        st.info("AI analysis unavailable - OpenAI client not configured.")
+        return
+    
+    with st.spinner("Generating AI analysis..."):
+        # Extract specific question from query
+        specific_question = _extract_specific_question(query, df1['city'], df2['city'])
+        
+        specific_section = ""
+        if specific_question:
+            specific_section = f"""
+**USER'S SPECIFIC QUESTION:**
+The user specifically asked: "{specific_question}"
+Please address this question directly at the beginning of your response.
+"""
+        
+        prompt = f"""
+Compare these two U.S. cities based on the data provided:
+
+**{df1['city']}, {df1['state']}:**
+- Population: {int(df1['population']):,}
+- Median Age: {df1['median_age']:.1f} years
+- Average Household Size: {df1['avg_household_size']:.2f}
+
+**{df2['city']}, {df2['state']}:**
+- Population: {int(df2['population']):,}
+- Median Age: {df2['median_age']:.1f} years
+- Average Household Size: {df2['avg_household_size']:.2f}
+{specific_section}
+
+TASK:
+1. {"First, directly answer the user's specific question about " + specific_question if specific_question else "Write a 2-3 sentence summary comparing both cities"}
+2. List 3 key differences as bullet points
+3. Provide recommendations:
+   - Which city is better for families?
+   - Which city is better for young professionals?
+   - Which city is better for retirement?
+4. End with a balanced conclusion
+
+Keep it concise, friendly, and actionable.
+Use your general knowledge about these cities (weather, culture, economy, etc.) to provide a complete answer.
+"""
+        
+        try:
+            response = client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.4,
+                max_tokens=LLM_MAX_TOKENS_COMPARISON,
+            )
+            insight = response.choices[0].message.content.strip()
+        except Exception as e:
+            insight = f"AI analysis unavailable: {str(e)}"
+    
+    # Show detected question
+    if specific_question:
+        st.markdown(
+            f"<div style='font-size: 0.85rem; color: #a0aec0; margin-bottom: 0.5rem;'>📝 Detected specific question: <em>{specific_question}</em></div>",
+            unsafe_allow_html=True
+        )
+    
+    st.markdown(
+        f"""
+        <div class="insight-card">
+            <div class="insight-label">AI-Powered Comparison</div>
+            <div class="insight-text">{convert_markdown_to_html(insight)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def _extract_specific_question(query: str, city1: str, city2: str) -> str:
+    """Extract any specific question beyond the comparison request."""
+    q_lower = query.lower()
+    c1, c2 = city1.lower(), city2.lower()
+    
+    remove_phrases = [
+        f"compare {c1} and {c2}", f"compare {c2} and {c1}",
+        f"{c1} vs {c2}", f"{c2} vs {c1}",
+        f"{c1} versus {c2}", f"{c2} versus {c1}",
+        f"{c1} or {c2}", f"{c2} or {c1}",
+        f"which is best {c1} or {c2}", f"which is better {c1} or {c2}",
+    ]
+    
+    remaining = q_lower
+    for phrase in remove_phrases:
+        remaining = remaining.replace(phrase, "")
+    
+    remaining = remaining.strip().strip(".").strip(",").strip()
+    
+    if len(remaining) > 10:
+        return remaining
+    return None
+
+
+# -------------------------------------------------
+# STATE COMPARISON CARD
+# -------------------------------------------------
+def show_state_comparison(state1: str, stats1: dict, cities1: pd.DataFrame,
+                          state2: str, stats2: dict, cities2: pd.DataFrame, query: str = ""):
+    """Display comprehensive state comparison."""
+    
+    # Header
+    st.markdown(
+        f"<div class='section-header'>🏆 State Comparison: {state1} vs {state2}</div>",
+        unsafe_allow_html=True
+    )
+    
+    # Side-by-side stats
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(
+            f"""
+            <div class="insight-card">
+                <div class="insight-label">State Profile</div>
+                <div class="insight-title">📍 {state1}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        st.metric("Cities in Database", f"{int(stats1['city_count']):,}")
+        st.metric("Total Population", f"{int(stats1['total_population']):,}")
+        st.metric("Avg City Population", f"{int(stats1['avg_population']):,}")
+        st.metric("Avg Median Age", f"{stats1['avg_median_age']:.1f} years")
+        st.metric("Avg Household Size", f"{stats1['avg_household_size']:.2f}")
+    
+    with col2:
+        st.markdown(
+            f"""
+            <div class="insight-card">
+                <div class="insight-label">State Profile</div>
+                <div class="insight-title">📍 {state2}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        st.metric("Cities in Database", f"{int(stats2['city_count']):,}")
+        st.metric("Total Population", f"{int(stats2['total_population']):,}")
+        st.metric("Avg City Population", f"{int(stats2['avg_population']):,}")
+        st.metric("Avg Median Age", f"{stats2['avg_median_age']:.1f} years")
+        st.metric("Avg Household Size", f"{stats2['avg_household_size']:.2f}")
+    
+    # Top Cities Comparison
+    st.markdown("<div class='section-header'>🏙️ Top Cities Comparison</div>", unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"**Top 5 Cities in {state1}**")
+        st.dataframe(
+            cities1[["city", "population", "median_age"]].rename(
+                columns={"city": "City", "population": "Population", "median_age": "Median Age"}
+            ),
+            use_container_width=True,
+            hide_index=True
+        )
+    
+    with col2:
+        st.markdown(f"**Top 5 Cities in {state2}**")
+        st.dataframe(
+            cities2[["city", "population", "median_age"]].rename(
+                columns={"city": "City", "population": "Population", "median_age": "Median Age"}
+            ),
+            use_container_width=True,
+            hide_index=True
+        )
+    
+    # Visual Comparison Chart
+    st.markdown("<div class='section-header'>📊 Visual Comparison</div>", unsafe_allow_html=True)
+    
+    comparison_data = pd.DataFrame({
+        "Metric": ["Total Population (M)", "Avg City Population (K)", "Avg Median Age", "Avg Household Size"],
+        state1: [
+            stats1['total_population'] / 1_000_000,
+            stats1['avg_population'] / 1_000,
+            stats1['avg_median_age'],
+            stats1['avg_household_size'] * 10
+        ],
+        state2: [
+            stats2['total_population'] / 1_000_000,
+            stats2['avg_population'] / 1_000,
+            stats2['avg_median_age'],
+            stats2['avg_household_size'] * 10
+        ]
+    })
+    
+    fig = go.Figure()
+    fig.add_trace(go.Bar(name=state1, x=comparison_data["Metric"], y=comparison_data[state1], marker_color='#667eea'))
+    fig.add_trace(go.Bar(name=state2, x=comparison_data["Metric"], y=comparison_data[state2], marker_color='#764ba2'))
+    fig.update_layout(
+        barmode='group',
+        title="State Metrics Comparison",
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        height=350,
+        margin=dict(l=10, r=10, t=40, b=10),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # AI Analysis
+    _show_state_comparison_ai_analysis(state1, stats1, cities1, state2, stats2, cities2, query)
+    
+    # Download combined data
+    combined_df = pd.DataFrame([
+        {"State": state1, **{k: v for k, v in stats1.items() if k != 'state'}},
+        {"State": state2, **{k: v for k, v in stats2.items() if k != 'state'}},
+    ])
+    
+    csv = convert_df_to_csv(combined_df)
+    st.download_button(
+        label="📥 Download Comparison Data",
+        data=csv,
+        file_name=f"{state1}_vs_{state2}_comparison.csv",
+        mime="text/csv",
+    )
+
+
+def _show_state_comparison_ai_analysis(state1: str, stats1: dict, cities1: pd.DataFrame,
+                                        state2: str, stats2: dict, cities2: pd.DataFrame, query: str):
+    """Show AI analysis for state comparison."""
+    
+    st.markdown("<div class='section-header'>🤖 AI Analysis & Recommendation</div>", unsafe_allow_html=True)
+    
+    client = get_openai_client()
+    if not client:
+        st.info("AI analysis unavailable - OpenAI client not configured.")
+        return
+    
+    with st.spinner("Generating AI analysis..."):
+        prompt = f"""
+Compare these two U.S. states based on the data provided:
+
+**{state1}:**
+- Number of cities in database: {int(stats1['city_count'])}
+- Total population: {int(stats1['total_population']):,}
+- Average city population: {int(stats1['avg_population']):,}
+- Average median age: {stats1['avg_median_age']:.1f} years
+- Average household size: {stats1['avg_household_size']:.2f}
+- Top cities: {', '.join(cities1['city'].head(5).tolist())}
+
+**{state2}:**
+- Number of cities in database: {int(stats2['city_count'])}
+- Total population: {int(stats2['total_population']):,}
+- Average city population: {int(stats2['avg_population']):,}
+- Average median age: {stats2['avg_median_age']:.1f} years
+- Average household size: {stats2['avg_household_size']:.2f}
+- Top cities: {', '.join(cities2['city'].head(5).tolist())}
+
+TASK:
+1. Write a 2-3 sentence summary comparing both states
+2. List 3 key differences as bullet points
+3. Provide recommendations:
+   - Which state is better for families?
+   - Which state is better for young professionals?
+   - Which state is better for retirement?
+4. End with a balanced conclusion
+
+Use your general knowledge about these states (weather, climate, cost of living, culture, economy, etc.)
+Keep it concise, friendly, and actionable.
+"""
+        
+        try:
+            response = client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.4,
+                max_tokens=LLM_MAX_TOKENS_COMPARISON,
+            )
+            insight = response.choices[0].message.content.strip()
+        except Exception as e:
+            insight = f"AI analysis unavailable: {str(e)}"
+    
+    st.markdown(
+        f"""
+        <div class="insight-card">
+            <div class="insight-label">AI-Powered Comparison</div>
+            <div class="insight-text">{convert_markdown_to_html(insight)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+# -------------------------------------------------
+# RECOMMENDATION CARD
+# -------------------------------------------------
+def show_recommendation_card(top_city: pd.Series, category: str, all_results: pd.DataFrame = None):
+    """Display recommendation result card."""
+    
+    # Title based on category
+    titles = {
+        "families": "Best City for Families",
+        "young_professionals": "Best City for Young Professionals",
+        "retirement": "Best City for Retirement",
+        "general": "Top Recommended City"
+    }
+    title = titles.get(category, "Top Recommended City")
+    
+    card_html = f"""
+    <div class="result-card">
+      <div class="result-card-title">{title}</div>
+      <div style="display: flex; justify-content: space-around; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div style="text-align: center;">
+          <div style="font-size: 0.75rem; opacity: 0.9; margin-bottom: 0.25rem;">CITY</div>
+          <div class="result-card-value">{top_city["city"]}</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 0.75rem; opacity: 0.9; margin-bottom: 0.25rem;">STATE</div>
+          <div class="result-card-value">{top_city["state"]}</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 0.75rem; opacity: 0.9; margin-bottom: 0.25rem;">SCORE</div>
+          <div class="result-card-value">{top_city.get('score', 0):.3f}</div>
+        </div>
+      </div>
+    </div>
+    """
+    st.markdown(card_html, unsafe_allow_html=True)
+
+
+# -------------------------------------------------
+# CLUSTER SCATTER PLOT
+# -------------------------------------------------
+def show_cluster_scatter(df_clusters: pd.DataFrame):
+    """Display cluster scatter plot with PCA."""
+    
+    required = ["ml_vector_population", "ml_vector_age", "ml_vector_household"]
+    if not all(col in df_clusters.columns for col in required):
+        st.caption("Scatter plot unavailable (missing ML feature columns).")
+        return
+    
+    X = df_clusters[required].values
+    pca = PCA(n_components=2)
+    comps = pca.fit_transform(X)
+    
+    plot_df = df_clusters.copy()
+    plot_df["pc1"] = comps[:, 0]
+    plot_df["pc2"] = comps[:, 1]
+    
+    color_col = "cluster_label" if "cluster_label" in plot_df.columns else "cluster_id"
+    
+    fig = px.scatter(
+        plot_df,
+        x="pc1",
+        y="pc2",
+        color=color_col,
+        hover_data=["city", "state"],
+        title="City Clusters — PCA Projection",
+        color_continuous_scale="Viridis"
+    )
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=30, b=10),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        height=400,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# -------------------------------------------------
+# LIFESTYLE CARD
+# -------------------------------------------------
+def show_lifestyle_card(city: str, state: str, population, median_age, household_size, 
+                        description: str, ai_summary: str):
+    """Display lifestyle profile card."""
+    
+    card_html = f"""
+    <div class="insight-card">
+      <div class="insight-label">Lifestyle Profile Generated with RAG</div>
+      <div class="insight-title">Life in {city}, {state}</div>
+      <div class="insight-text">{ai_summary}</div>
+    </div>
+    """
+    st.markdown(card_html, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if population is not None:
+            st.metric("Population", f"{population:,}")
+    with col2:
+        if median_age is not None:
+            st.metric("Median age", f"{median_age:.1f} years")
+    with col3:
+        if household_size is not None:
+            st.metric("Avg household size", f"{household_size:.2f}")
+    
+    if description:
+        st.markdown("<div class='section-header'>Dataset Description</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='data-container'>{description}</div>", unsafe_allow_html=True)
+
+
+# -------------------------------------------------
+# CITY TABLE
+# -------------------------------------------------
+def show_city_table(df: pd.DataFrame, title: str = "Results", show_download: bool = True):
+    """Display a city table with optional download."""
+    
+    st.markdown(f"<div class='section-header'>{title}</div>", unsafe_allow_html=True)
+    st.dataframe(df, use_container_width=True, height=400)
+    
+    if show_download:
+        csv = convert_df_to_csv(df)
+        st.download_button(
+            label="📥 Download CSV",
+            data=csv,
+            file_name="city_results.csv",
+            mime="text/csv",
+        )
+
+
+# -------------------------------------------------
+# AI RESPONSE CARD
+# -------------------------------------------------
+def show_ai_response(message: str, is_fallback: bool = False):
+    """Display an AI-generated response."""
+    
+    if is_fallback:
+        label = "ℹ️ This answer is from AI knowledge (not from our verified database)"
+        bg_color = "rgba(237, 137, 54, 0.1)"
+        border_color = "#ed8936"
+    else:
+        label = ""
+        bg_color = "rgba(102, 126, 234, 0.1)"
+        border_color = "#667eea"
+    
+    st.markdown(f"""
+    <div style="
+        background: {bg_color};
+        border-left: 4px solid {border_color};
+        border-radius: 8px;
+        padding: 1.25rem;
+        margin: 1rem 0;
+    ">
+        {"<div style='font-size: 0.8rem; color: " + border_color + "; margin-bottom: 0.5rem;'>" + label + "</div>" if label else ""}
+        <div>{convert_markdown_to_html(message)}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# -------------------------------------------------
+# OUT OF SCOPE CARD
+# -------------------------------------------------
+def show_out_of_scope():
+    """Display out of scope message for non-city questions."""
+    
+    st.markdown(
+        """
+        <div class='insight-card' style="background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);">
+            <div class='insight-label'>Out of Scope</div>
+            <div class='insight-title'>This platform provides US city insights only</div>
+            <div class='insight-text'>
+                Your question doesn't appear to be about US cities or states.<br><br>
+                You can ask about:<br>
+                • City populations and demographics<br>
+                • Best cities for families, professionals, or retirement<br>
+                • City and state comparisons<br>
+                • Lifestyle profiles and similar cities<br><br>
+                Please ask something related to <b>US cities</b>.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+# -------------------------------------------------
+# AI SUMMARY GENERATOR
+# -------------------------------------------------
+def generate_ai_summary(df: pd.DataFrame, query: str, summary_style: str = "brief") -> str:
+    """Generate AI summary based on style."""
+    
+    client = get_openai_client()
+    if not client or df.empty:
+        return None
+    
+    sample = df.head(10).to_markdown(index=False)
+    
+    style_prompts = {
+        "none": None,
+        "brief": "Give 2-3 short bullet points summarizing the key insights from these results.",
+        "detailed": "Write a 3-4 sentence summary explaining these results and their significance.",
+        "recommendation": "Based on these results, provide a clear recommendation with brief reasoning.",
+        "comparison": "Compare the top results and highlight key differences.",
+        "highlights": "List 3 key highlights from these results as short bullet points."
+    }
+    
+    style_prompt = style_prompts.get(summary_style)
+    if not style_prompt:
+        return None
+    
+    prompt = f"""
+User asked: "{query}"
+
+Here are the results:
+{sample}
+
+{style_prompt}
+
+Keep it concise and actionable.
+"""
+    
+    try:
+        response = client.chat.completions.create(
+            model=LLM_MODEL,
+            temperature=0.3,
+            max_tokens=LLM_MAX_TOKENS_SUMMARY,
+            messages=[
+                {"role": "system", "content": "You are a concise data analyst providing city insights."},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return None
