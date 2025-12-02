@@ -286,7 +286,7 @@ if mode == "Search":
 # -------------------------------------------------
 st.markdown("---")
 st.markdown("""
-<div style="text-align: center; font-size: 0.8rem; color: #a0aec0; padding: 1rem;">
+<div style="text-align: center; font-size: 0.8rem; color: #a0aec0; padding: 1rem; margin-top: 1rem; margin-bottom: 0rem;">
     CitySearch AI — Powered by GPT-4 and ML Clustering<br>
     <span style="opacity: 0.7;">Ask anything about US cities</span>
 </div>
