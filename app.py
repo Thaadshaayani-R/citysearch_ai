@@ -266,7 +266,6 @@ if mode == "Search":
             padding: 3rem 2rem;
             color: #a0aec0;
         ">
-            <div style="font-size: 3rem; margin-bottom: 1rem;">🏙️</div>
             <div style="font-size: 1.1rem; margin-bottom: 0.5rem;">
                 Ask me anything about US cities
             </div>
@@ -277,14 +276,12 @@ if mode == "Search":
         """, unsafe_allow_html=True)
         
         # Feature highlights
-        st.markdown("---")
         
         col1, col2, col3 = st.columns(3)
         
         with col1:
             st.markdown("""
             <div style="text-align: center; padding: 1.5rem;">
-                <div style="font-size: 2rem; margin-bottom: 0.5rem;">📊</div>
                 <div style="font-weight: 600; margin-bottom: 0.25rem;">City Data</div>
                 <div style="font-size: 0.85rem; color: #a0aec0;">
                     Population, demographics, and more
@@ -295,7 +292,6 @@ if mode == "Search":
         with col2:
             st.markdown("""
             <div style="text-align: center; padding: 1.5rem;">
-                <div style="font-size: 2rem; margin-bottom: 0.5rem;">🤖</div>
                 <div style="font-weight: 600; margin-bottom: 0.25rem;">AI-Powered</div>
                 <div style="font-size: 0.85rem; color: #a0aec0;">
                     Smart recommendations and insights
@@ -306,7 +302,6 @@ if mode == "Search":
         with col3:
             st.markdown("""
             <div style="text-align: center; padding: 1.5rem;">
-                <div style="font-size: 2rem; margin-bottom: 0.5rem;">⚡</div>
                 <div style="font-weight: 600; margin-bottom: 0.25rem;">Instant Results</div>
                 <div style="font-size: 0.85rem; color: #a0aec0;">
                     Fast answers to any city question
@@ -314,26 +309,6 @@ if mode == "Search":
             </div>
             """, unsafe_allow_html=True)
         
-        # Sample queries
-        st.markdown("---")
-        st.markdown("<div style='text-align: center; margin-bottom: 1rem;'><strong>Try asking:</strong></div>", unsafe_allow_html=True)
-        
-        sample_queries = [
-            "Which city has the highest population?",
-            "Best cities for families in California",
-            "Compare Austin and Denver",
-            "Top 10 largest cities in Texas",
-            "Life in Miami",
-        ]
-        
-        cols = st.columns(len(sample_queries))
-        for i, sample in enumerate(sample_queries):
-            with cols[i]:
-                if st.button(sample, key=f"sample_{i}", use_container_width=True):
-                    st.session_state["current_query"] = sample
-                    st.session_state["auto_search"] = True
-                    st.rerun()
-
 
 # -------------------------------------------------
 # FOOTER
