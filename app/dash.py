@@ -5,6 +5,9 @@ A smart AI-powered search engine for US cities.
 
 import streamlit as st
 import pandas as pd
+import sys
+sys.path.insert(0, '..')  # Add parent directory to path
+
 from db_config import get_engine
 from config import APP_TITLE, APP_SUBTITLE
 from llm_classifier import classify_query
