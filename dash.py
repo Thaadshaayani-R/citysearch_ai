@@ -2757,14 +2757,14 @@ IMPORTANT:
                         mime="text/csv"
                     )
                 
-                # ML city insights
-                if len(df) == 1 and "city" in [c.lower() for c in df.columns]:
-                    city_col = [c for c in df.columns if c.lower() == "city"][0]
-                    city_name = df.iloc[0][city_col]
-                    if str(city_name).lower() in df_features["city"].str.lower().values:
-                        show_city_insights(city_name)
-                        show_similar_cities(city_name)
-            st.stop()
+            #     # ML city insights
+            #     if len(df) == 1 and "city" in [c.lower() for c in df.columns]:
+            #         city_col = [c for c in df.columns if c.lower() == "city"][0]
+            #         city_name = df.iloc[0][city_col]
+            #         if str(city_name).lower() in df_features["city"].str.lower().values:
+            #             show_city_insights(city_name)
+            #             show_similar_cities(city_name)
+            # st.stop()
 
         # -------------------------------------------------
         # SEMANTIC & HYBRID MODES
