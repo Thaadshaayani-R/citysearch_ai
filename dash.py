@@ -1239,6 +1239,102 @@ def show_city_profile_card(city_name: str, state_name: str, row: pd.Series):
             except Exception as e:
                 pass
 
+def show_state_metric_card(state_name: str, metric_name: str, metric_value, city_count: int, state_data: pd.DataFrame):
+    """
+    Display a beautiful state-level metric card with context.
+    """
+    
+    # Format the metric value
+    if isinstance(metric_value, (int, float)):
+        if metric_value > 1000:
+            formatted_value = f"{int(metric_value):,}"
+        else:
+            formatted_value = f"{metric_value:.1f}"
+    else:
+        formatted_value = str(metric_value)
+    
+    # Get metric display name
+    metric_display = metric_name.replace("_", " ").title()
+    
+    # Add label based on metric type
+    if "population" in metric_name.lower():
+        metric_label = "Total Population"
+        sub_label = f"Across {city_count} cities in our database"
+    elif "age" in metric_name.lower():
+        metric_label = "Average Median Age"
+        sub_label = f"Averaged across {city_count} cities"
+    else:
+        metric_label = f"Average {metric_display}"
+        sub_label = f"Averaged across {city_count} cities"
+    
+    # Main card
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        color: white;
+        text-align: center;
+    ">
+        <div style="font-size: 1rem; opacity: 0.9; margin-bottom: 0.5rem;">
+            {state_name} — {metric_label}
+        </div>
+        <div style="font-size: 3rem; font-weight: 700; margin-bottom: 0.5rem;">
+            {formatted_value}
+        </div>
+        <div style="font-size: 0.85rem; opacity: 0.8;">
+            {sub_label}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Show top cities for this metric
+    if "population" in metric_name.lower():
+        top_cities = state_data.nlargest(5, "population")[["city", "population"]]
+        st.markdown("""
+        <div style="margin-top: 1rem;">
+            <h4 style="color: #11998e; margin-bottom: 0.75rem;">🏙️ Largest Cities</h4>
+        </div>
+        """, unsafe_allow_html=True)
+    elif "age" in metric_name.lower():
+        top_cities = state_data.nlargest(5, "median_age")[["city", "median_age"]]
+        st.markdown("""
+        <div style="margin-top: 1rem;">
+            <h4 style="color: #11998e; margin-bottom: 0.75rem;">👴 Highest Median Age</h4>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        top_cities = state_data.nlargest(5, "avg_household_size")[["city", "avg_household_size"]]
+        st.markdown("""
+        <div style="margin-top: 1rem;">
+            <h4 style="color: #11998e; margin-bottom: 0.75rem;">👨‍👩‍👧‍👦 Largest Households</h4>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Display top cities
+    for _, city_row in top_cities.iterrows():
+        city_name = city_row.iloc[0]
+        city_value = city_row.iloc[1]
+        
+        if isinstance(city_value, (int, float)) and city_value > 1000:
+            display_value = f"{int(city_value):,}"
+        elif isinstance(city_value, float):
+            display_value = f"{city_value:.1f}"
+        else:
+            display_value = str(city_value)
+        
+        st.markdown(f"""
+        <div style="
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(17, 153, 142, 0.2);
+        ">
+            <span>{city_name}</span>
+            <span style="font-weight: 600;">{display_value}</span>
+        </div>
+        """, unsafe_allow_html=True)
 
 def show_single_metric_card(city_name: str, state_name: str, metric_name: str, metric_value, row: pd.Series):
     """
@@ -2797,6 +2893,7 @@ IMPORTANT:
         # -------------------------------------------------
         # SINGLE METRIC QUERY (e.g., "What is the population of Denver?")
         # -------------------------------------------------
+
         q_lower = q.lower()
         
         # Detect single metric questions
@@ -2826,7 +2923,38 @@ IMPORTANT:
                     break
             
             if detected_metric:
-                # Extract city name
+                # First check if it's a STATE
+                detected_state = extract_single_state_fuzzy(q)
+                
+                if detected_state:
+                    # It's a state query - aggregate the data
+                    state_data = df_features[df_features["state"].str.lower() == detected_state.lower()]
+                    
+                    if not state_data.empty:
+                        if metric_column == "population":
+                            total_value = state_data["population"].sum()
+                            city_count = len(state_data)
+                            show_state_metric_card(
+                                state_name=detected_state,
+                                metric_name=detected_metric,
+                                metric_value=total_value,
+                                city_count=city_count,
+                                state_data=state_data
+                            )
+                            st.stop()
+                        elif metric_column in ["median_age", "avg_household_size"]:
+                            avg_value = state_data[metric_column].mean()
+                            city_count = len(state_data)
+                            show_state_metric_card(
+                                state_name=detected_state,
+                                metric_name=detected_metric,
+                                metric_value=avg_value,
+                                city_count=city_count,
+                                state_data=state_data
+                            )
+                            st.stop()
+                
+                # Check if it's a CITY
                 detected_city = extract_single_city_fuzzy(q)
                 
                 if detected_city:
