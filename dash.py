@@ -10,6 +10,7 @@ from openai import OpenAI
 import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.decomposition import PCA
+import re
 
 # core imports
 from core.query_router import build_sql_with_fallback
@@ -68,7 +69,130 @@ df_features = load_features()
 # -------------------------------------------------
 # SAFETY FILTERS (BLOCK 2)
 # -------------------------------------------------
-import re
+
+def classify_query_type(query: str) -> dict:
+    """
+    Classify query to determine response format.
+    Returns: {
+        "type": "simple_fact" | "multi_metric" | "opinion" | "comparison" | "list" | "profile",
+        "needs_ai_summary": True | False,
+        "response_style": "card" | "table" | "narrative" | "comparison"
+    }
+    """
+    q_lower = query.lower().strip()
+    
+    # -------------------------------------------------
+    # CASE 4: Comparative questions
+    # -------------------------------------------------
+    comparison_patterns = [
+        " vs ", " versus ", "compare ", "comparison", 
+        "difference between", "better", " or "
+    ]
+    if any(pattern in q_lower for pattern in comparison_patterns):
+        if " vs " in q_lower or " versus " in q_lower or "compare" in q_lower:
+            return {
+                "type": "comparison",
+                "needs_ai_summary": True,
+                "response_style": "comparison"
+            }
+    
+    # -------------------------------------------------
+    # CASE 3: Opinion or reasoning questions
+    # -------------------------------------------------
+    opinion_patterns = [
+        "which city is best", "which is best", "best city for",
+        "is it good", "is it worth", "should i",
+        "why is", "why are", "why does",
+        "recommend", "suggestion", "advice",
+        "good for families", "good for young", "good for retire",
+        "pros and cons", "advantages", "disadvantages"
+    ]
+    if any(pattern in q_lower for pattern in opinion_patterns):
+        return {
+            "type": "opinion",
+            "needs_ai_summary": True,
+            "response_style": "narrative"
+        }
+    
+    # -------------------------------------------------
+    # CASE 2: Multi-metric or profile questions
+    # -------------------------------------------------
+    profile_patterns = [
+        "city profile", "full profile", "tell me about",
+        "everything about", "all about", "overview of",
+        "describe", "what is life like"
+    ]
+    if any(pattern in q_lower for pattern in profile_patterns):
+        return {
+            "type": "profile",
+            "needs_ai_summary": True,
+            "response_style": "card"
+        }
+    
+    # List queries (top N, show all, etc.)
+    list_patterns = [
+        "top ", "best ", "largest ", "smallest ", "highest ", "lowest ",
+        "show all", "list all", "all cities"
+    ]
+    if any(pattern in q_lower for pattern in list_patterns):
+        if any(word in q_lower for word in ["best", "worst", "recommend"]):
+            return {
+                "type": "list_opinion",
+                "needs_ai_summary": True,
+                "response_style": "table"
+            }
+        return {
+            "type": "list_data",
+            "needs_ai_summary": False,
+            "response_style": "table"
+        }
+    
+    # Multi-metric detection
+    metrics_mentioned = 0
+    metric_words = ["population", "age", "income", "household", "density", "median", "average"]
+    for word in metric_words:
+        if word in q_lower:
+            metrics_mentioned += 1
+    
+    if metrics_mentioned >= 2 or " and " in q_lower:
+        return {
+            "type": "multi_metric",
+            "needs_ai_summary": True,
+            "response_style": "card"
+        }
+    
+    # -------------------------------------------------
+    # CASE 1: Simple fact questions (DEFAULT)
+    # -------------------------------------------------
+    simple_fact_patterns = [
+        "what is the population", "what's the population",
+        "what is the median", "what's the median",
+        "what is the age", "what's the age",
+        "what is the household", "what's the household",
+        "how many people", "how many cities",
+        "population of", "state of", "code for"
+    ]
+    if any(pattern in q_lower for pattern in simple_fact_patterns):
+        return {
+            "type": "simple_fact",
+            "needs_ai_summary": False,
+            "response_style": "card"
+        }
+    
+    # Count queries - simple fact
+    if any(phrase in q_lower for phrase in ["how many", "count", "total number"]):
+        return {
+            "type": "simple_fact",
+            "needs_ai_summary": False,
+            "response_style": "card"
+        }
+    
+    # Default: treat as data query
+    return {
+        "type": "data_query",
+        "needs_ai_summary": False,
+        "response_style": "table"
+    }
 
 def is_nonsense_query(q: str):
     if len(q.strip()) < 2:
@@ -165,132 +289,6 @@ def convert_markdown_to_html(text: str) -> str:
     
     return '\n'.join(converted_lines)
 
-
-def classify_query_type(query: str) -> dict:
-    """
-    Classify query to determine response format.
-    Returns: {
-        "type": "simple_fact" | "multi_metric" | "opinion" | "comparison" | "list" | "profile",
-        "needs_ai_summary": True | False,
-        "response_style": "card" | "table" | "narrative" | "comparison"
-    }
-    """
-    q_lower = query.lower().strip()
-    
-    # -------------------------------------------------
-    # CASE 4: Comparative questions
-    # -------------------------------------------------
-    comparison_patterns = [
-        " vs ", " versus ", "compare ", "comparison", 
-        "difference between", "better", " or "
-    ]
-    if any(pattern in q_lower for pattern in comparison_patterns):
-        # Check if it has two entities
-        if " vs " in q_lower or " versus " in q_lower or "compare" in q_lower:
-            return {
-                "type": "comparison",
-                "needs_ai_summary": True,
-                "response_style": "comparison"
-            }
-    
-    # -------------------------------------------------
-    # CASE 3: Opinion or reasoning questions
-    # -------------------------------------------------
-    opinion_patterns = [
-        "which city is best", "which is best", "best city for",
-        "is it good", "is it worth", "should i",
-        "why is", "why are", "why does",
-        "recommend", "suggestion", "advice",
-        "good for families", "good for young", "good for retire",
-        "pros and cons", "advantages", "disadvantages"
-    ]
-    if any(pattern in q_lower for pattern in opinion_patterns):
-        return {
-            "type": "opinion",
-            "needs_ai_summary": True,
-            "response_style": "narrative"
-        }
-    
-    # -------------------------------------------------
-    # CASE 2: Multi-metric or profile questions
-    # -------------------------------------------------
-    profile_patterns = [
-        "city profile", "full profile", "tell me about",
-        "everything about", "all about", "overview of",
-        "describe", "what is life like"
-    ]
-    if any(pattern in q_lower for pattern in profile_patterns):
-        return {
-            "type": "profile",
-            "needs_ai_summary": True,
-            "response_style": "card"
-        }
-    
-    # List queries (top N, show all, etc.)
-    list_patterns = [
-        "top ", "best ", "largest ", "smallest ", "highest ", "lowest ",
-        "show all", "list all", "all cities"
-    ]
-    if any(pattern in q_lower for pattern in list_patterns):
-        # Check if asking for ranking/opinion vs just data
-        if any(word in q_lower for word in ["best", "worst", "recommend"]):
-            return {
-                "type": "list_opinion",
-                "needs_ai_summary": True,
-                "response_style": "table"
-            }
-        return {
-            "type": "list_data",
-            "needs_ai_summary": False,
-            "response_style": "table"
-        }
-    
-    # Multi-metric detection (asking for multiple things)
-    metrics_mentioned = 0
-    metric_words = ["population", "age", "income", "household", "density", "median", "average"]
-    for word in metric_words:
-        if word in q_lower:
-            metrics_mentioned += 1
-    
-    if metrics_mentioned >= 2 or " and " in q_lower:
-        return {
-            "type": "multi_metric",
-            "needs_ai_summary": True,
-            "response_style": "card"
-        }
-    
-    # -------------------------------------------------
-    # CASE 1: Simple fact questions (DEFAULT)
-    # -------------------------------------------------
-    simple_fact_patterns = [
-        "what is the population", "what's the population",
-        "what is the median", "what's the median",
-        "what is the age", "what's the age",
-        "what is the household", "what's the household",
-        "how many people", "how many cities",
-        "population of", "state of", "code for"
-    ]
-    if any(pattern in q_lower for pattern in simple_fact_patterns):
-        return {
-            "type": "simple_fact",
-            "needs_ai_summary": False,
-            "response_style": "card"
-        }
-    
-    # Count queries - simple fact
-    if any(phrase in q_lower for phrase in ["how many", "count", "total number"]):
-        return {
-            "type": "simple_fact",
-            "needs_ai_summary": False,
-            "response_style": "card"
-        }
-    
-    # Default: treat as data query with optional summary
-    return {
-        "type": "data_query",
-        "needs_ai_summary": False,
-        "response_style": "table"
-    }
 
 # -------------------------------------------------
 # GLOBAL FUZZY MATCHING FOR STATES AND CITIES
