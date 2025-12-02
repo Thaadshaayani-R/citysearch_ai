@@ -277,37 +277,37 @@ if mode == "Search":
         
         # Feature highlights
         
-        # col1, col2, col3 = st.columns(3)
+        col1, col2, col3 = st.columns(3)
         
-        # with col1:
-        #     st.markdown("""
-        #     <div style="text-align: center; padding: 1.5rem;">
-        #         <div style="font-weight: 600; margin-bottom: 0.25rem;">City Data</div>
-        #         <div style="font-size: 0.85rem; color: #a0aec0;">
-        #             Population, demographics, and more
-        #         </div>
-        #     </div>
-        #     """, unsafe_allow_html=True)
+        with col1:
+            st.markdown("""
+            <div style="text-align: center; padding: 1.5rem;">
+                <div style="font-weight: 600; margin-bottom: 0.25rem;">City Data</div>
+                <div style="font-size: 0.85rem; color: #a0aec0;">
+                    Population, demographics, and more
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         
-        # with col2:
-        #     st.markdown("""
-        #     <div style="text-align: center; padding: 1.5rem;">
-        #         <div style="font-weight: 600; margin-bottom: 0.25rem;">AI-Powered</div>
-        #         <div style="font-size: 0.85rem; color: #a0aec0;">
-        #             Smart recommendations and insights
-        #         </div>
-        #     </div>
-        #     """, unsafe_allow_html=True)
+        with col2:
+            st.markdown("""
+            <div style="text-align: center; padding: 1.5rem;">
+                <div style="font-weight: 600; margin-bottom: 0.25rem;">AI-Powered</div>
+                <div style="font-size: 0.85rem; color: #a0aec0;">
+                    Smart recommendations and insights
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         
-        # with col3:
-        #     st.markdown("""
-        #     <div style="text-align: center; padding: 1.5rem;">
-        #         <div style="font-weight: 600; margin-bottom: 0.25rem;">Instant Results</div>
-        #         <div style="font-size: 0.85rem; color: #a0aec0;">
-        #             Fast answers to any city question
-        #         </div>
-        #     </div>
-        #     """, unsafe_allow_html=True)
+        with col3:
+            st.markdown("""
+            <div style="text-align: center; padding: 1.5rem;">
+                <div style="font-weight: 600; margin-bottom: 0.25rem;">Instant Results</div>
+                <div style="font-size: 0.85rem; color: #a0aec0;">
+                    Fast answers to any city question
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         
 
 # -------------------------------------------------
