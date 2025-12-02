@@ -1700,7 +1700,6 @@ if mode == "Search":
 
     st.sidebar.markdown("---")
 
-
 # -------------------------------------------------
 # HERO + SEARCH BOX (for Search mode)
 # -------------------------------------------------
@@ -1716,7 +1715,6 @@ if mode == "Search":
         """,
         unsafe_allow_html=True
     )
-
     left, right = st.columns([4, 1])
     with left:
         user_query = st.text_input(
@@ -1727,12 +1725,7 @@ if mode == "Search":
         )
     with right:
         search_clicked = st.button("Search", use_container_width=True)
-
-    query_info = classify_query_type(q)
-    enable_summary = query_info["needs_ai_summary"]
-    response_style = query_info["response_style"]
-    query_type = query_info["type"]
-
+    
     # Auto-search trigger
     if st.session_state.get("auto_search", False):
         search_clicked = True
@@ -1820,7 +1813,6 @@ if mode == "MLOps Dashboard":
             st.json(registry)
 
     st.stop()
-
 
 # -------------------------------------------------
 # MAIN LOGIC — SEARCH MODE
