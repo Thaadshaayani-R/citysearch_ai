@@ -260,12 +260,12 @@ if mode == "Search":
     # EMPTY STATE
     # -------------------------------------------------
     elif not search_clicked:
-        st.markdown("""
-        <div style="
-            text-align: center;
-            padding: 3rem 2rem;
-            color: #a0aec0;
-        ">
+        # st.markdown("""
+        # <div style="
+        #     text-align: center;
+        #     padding: 3rem 2rem;
+        #     color: #a0aec0;
+        # ">
         #     <div style="font-size: 1.1rem; margin-bottom: 0.5rem;">
         #         Ask me anything about US cities
         #     </div>
