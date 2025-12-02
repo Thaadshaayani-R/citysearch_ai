@@ -262,7 +262,7 @@ if mode == "Search":
     elif not search_clicked:
         # Feature highlights - at the top with minimal spacing
         st.markdown("""
-        <div style="display: flex; justify-content: center; gap: 3rem; margin-top: 5rem; margin-bottom: 0.5rem;">
+        <div style="display: flex; justify-content: center; gap: 3rem; margin-top: 15rem; margin-bottom: 0.5rem;">
             <div style="text-align: center;">
                 <div style="font-weight: 600; font-size: 0.95rem;">City Data</div>
                 <div style="font-size: 0.8rem; color: #a0aec0;">Population, demographics, and more</div>
