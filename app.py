@@ -259,9 +259,6 @@ if mode == "Search":
     # -------------------------------------------------
     # EMPTY STATE
     # -------------------------------------------------
-# -------------------------------------------------
-    # EMPTY STATE
-    # -------------------------------------------------
     elif not search_clicked:
         # Feature highlights - at the top with minimal spacing
         st.markdown("""
@@ -284,17 +281,6 @@ if mode == "Search":
         # Divider with reduced spacing
         st.markdown("<hr style='margin: 1rem 0; border-color: #2d3748;'>", unsafe_allow_html=True)
         
-        # Main message - compact
-        st.markdown("""
-        <div style="text-align: center; padding: 1rem 2rem; color: #a0aec0;">
-            <div style="font-size: 1rem; margin-bottom: 0.25rem;">
-                Ask me anything about US cities
-            </div>
-            <div style="font-size: 0.85rem; opacity: 0.8;">
-                Try clicking an example from the sidebar or type your own question
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
         
 
 # -------------------------------------------------
