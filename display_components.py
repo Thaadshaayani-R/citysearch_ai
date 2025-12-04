@@ -973,12 +973,7 @@ def show_recommendation_card(top_city, intent: str, df: pd.DataFrame):
         </div>
         
         <div style="margin-top: 16px; background: #1a1a2e; border-radius: 8px; height: 10px; overflow: hidden;">
-            <div style="
-                width: {score_display}%;
-                height: 100%;
-                background: linear-gradient(90deg, {color}, {color}88);
-                border-radius: 8px;
-            "></div>
+            <div style="width: {score_display}%; height: 100%; background: linear-gradient(90deg, {color}, {color}88); border-radius: 8px;"></div>
         </div>
         
         <div style="margin-top: 8px; font-size: 12px; color: #6b7280;">
@@ -986,6 +981,7 @@ def show_recommendation_card(top_city, intent: str, df: pd.DataFrame):
         </div>
     </div>
     """, unsafe_allow_html=True)
+    
 # -------------------------------------------------
 # CLUSTER SCATTER PLOT
 # -------------------------------------------------
