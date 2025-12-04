@@ -908,7 +908,7 @@ def show_recommendation_card(top_city, intent: str, df: pd.DataFrame):
     # Get all scores for percentile calculation
     all_scores = df["score"].values if "score" in df.columns else None
     
-    # Import and calculate formatted score
+    # Calculate normalized score and get label/color
     try:
         from core.score_translate import format_score_display
         score_info = format_score_display(raw_score, all_scores)
@@ -917,11 +917,24 @@ def show_recommendation_card(top_city, intent: str, df: pd.DataFrame):
         emoji = score_info["emoji"]
         color = score_info["color"]
     except Exception:
-        # Fallback
-        score_display = round(min(100, raw_score * 10), 1) if raw_score < 10 else round(raw_score, 1)
-        label = "Match"
-        emoji = "🎯"
-        color = "#6366f1"
+        # Fallback calculation
+        if all_scores is not None and len(all_scores) > 0:
+            import numpy as np
+            score_display = round((np.sum(all_scores < raw_score) / len(all_scores)) * 100, 1)
+        else:
+            score_display = round(min(100, raw_score * 10), 1) if raw_score < 10 else round(raw_score, 1)
+        
+        # Fallback labels and colors
+        if score_display >= 90:
+            label, emoji, color = "Excellent Match", "⭐", "#FFD700"
+        elif score_display >= 75:
+            label, emoji, color = "Great Match", "🟢", "#22c55e"
+        elif score_display >= 60:
+            label, emoji, color = "Good Match", "🔵", "#3b82f6"
+        elif score_display >= 40:
+            label, emoji, color = "Average Match", "🟡", "#eab308"
+        else:
+            label, emoji, color = "Below Average", "🟠", "#f97316"
     
     # Intent titles
     intent_titles = {
@@ -932,6 +945,7 @@ def show_recommendation_card(top_city, intent: str, df: pd.DataFrame):
     }
     title = intent_titles.get(intent, "Top Recommended City")
     
+    # Display card
     st.markdown(f"""
     <div style="
         background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
@@ -958,14 +972,12 @@ def show_recommendation_card(top_city, intent: str, df: pd.DataFrame):
             </div>
         </div>
         
-        <!-- Progress Bar -->
         <div style="margin-top: 16px; background: #1a1a2e; border-radius: 8px; height: 10px; overflow: hidden;">
             <div style="
                 width: {score_display}%;
                 height: 100%;
                 background: linear-gradient(90deg, {color}, {color}88);
                 border-radius: 8px;
-                transition: width 0.5s ease;
             "></div>
         </div>
         
@@ -974,7 +986,6 @@ def show_recommendation_card(top_city, intent: str, df: pd.DataFrame):
         </div>
     </div>
     """, unsafe_allow_html=True)
-
 # -------------------------------------------------
 # CLUSTER SCATTER PLOT
 # -------------------------------------------------
