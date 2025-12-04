@@ -307,7 +307,7 @@ def handle_ml_ranking(query, classification, df_features, get_engine_func, city_
         df = _fallback_ranking(df_features, intent, state)
     
     if df is not None and not df.empty:
-        show_recommendation_card(df.iloc[0], intent, df)
+        show_recommendation_card(df.iloc[0], intent, df, query)
         if explain_ml_results:
             try:
                 insights = explain_ml_results(query, df)
