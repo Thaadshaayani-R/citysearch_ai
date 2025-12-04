@@ -48,13 +48,16 @@ def classify_query_intent(query: str):
     # ============================================================
     # ML INTENTS (Family / Young Adults / Retirement)
     # ============================================================
-    if "family" in q or "families" in q:
+    # Family keywords
+    if any(word in q for word in ["family", "families", "kids", "children", "child", "kid", "schools", "raising"]):
         return "ml_family", None
 
-    if "young" in q or "young adult" in q or "young professionals" in q:
+    # Young professionals keywords
+    if any(word in q for word in ["young", "young adult", "young professionals", "adults", "adult", "career", "jobs", "millennials", "working professionals"]):
         return "ml_young", None
 
-    if "retire" in q or "retirement" in q or "seniors" in q:
+    # Retirement keywords
+    if any(word in q for word in ["retire", "retirement", "seniors", "senior", "elderly", "retirees", "older adults"]):
         return "ml_retirement", None
 
     # ============================================================
