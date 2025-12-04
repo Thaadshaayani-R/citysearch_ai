@@ -899,7 +899,7 @@ Keep it concise, friendly, and actionable.
 # RECOMMENDATION CARD
 # -------------------------------------------------
 def show_recommendation_card(top_city, intent: str, df: pd.DataFrame):
-    """Display recommendation card with improved score display."""
+    """Display recommendation card using native Streamlit components."""
     
     city_name = top_city.get("city", "Unknown")
     state_name = top_city.get("state", "")
@@ -908,33 +908,30 @@ def show_recommendation_card(top_city, intent: str, df: pd.DataFrame):
     # Get all scores for percentile calculation
     all_scores = df["score"].values if "score" in df.columns else None
     
-    # Calculate normalized score and get label/color
+    # Calculate normalized score
     try:
         from core.score_translate import format_score_display
         score_info = format_score_display(raw_score, all_scores)
         score_display = score_info["score_100"]
         label = score_info["label"]
         emoji = score_info["emoji"]
-        color = score_info["color"]
     except Exception:
-        # Fallback calculation
         if all_scores is not None and len(all_scores) > 0:
             import numpy as np
             score_display = round((np.sum(all_scores < raw_score) / len(all_scores)) * 100, 1)
         else:
             score_display = round(min(100, raw_score * 10), 1) if raw_score < 10 else round(raw_score, 1)
         
-        # Fallback labels and colors
         if score_display >= 90:
-            label, emoji, color = "Excellent Match", "⭐", "#FFD700"
+            label, emoji = "Excellent Match", "⭐"
         elif score_display >= 75:
-            label, emoji, color = "Great Match", "🟢", "#22c55e"
+            label, emoji = "Great Match", "🟢"
         elif score_display >= 60:
-            label, emoji, color = "Good Match", "🔵", "#3b82f6"
+            label, emoji = "Good Match", "🔵"
         elif score_display >= 40:
-            label, emoji, color = "Average Match", "🟡", "#eab308"
+            label, emoji = "Average Match", "🟡"
         else:
-            label, emoji, color = "Below Average", "🟠", "#f97316"
+            label, emoji = "Below Average", "🟠"
     
     # Intent titles
     intent_titles = {
@@ -945,42 +942,27 @@ def show_recommendation_card(top_city, intent: str, df: pd.DataFrame):
     }
     title = intent_titles.get(intent, "Top Recommended City")
     
-    # Display card
-    st.markdown(f"""
-        <div style="
-            background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
-            border-radius: 16px;
-            padding: 24px;
-            margin: 16px 0;
-            border: 1px solid #3d3d5c;
-        ">
-            <div style="font-size: 14px; color: #a0aec0; margin-bottom: 8px; font-weight: 500;">{title}</div>
-            
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
-                <div>
-                    <div style="font-size: 28px; font-weight: 700; color: #fff;">{city_name}</div>
-                    <div style="font-size: 16px; color: #a0aec0;">{state_name}</div>
-                </div>
-                
-                <div style="text-align: right;">
-                    <div style="font-size: 36px; font-weight: 700; color: {color};">
-                        {score_display:.0f}<span style="font-size: 18px; color: #a0aec0;">/100</span>
-                    </div>
-                    <div style="font-size: 14px; color: {color}; font-weight: 500;">
-                        {emoji} {label}
-                    </div>
-                </div>
-            </div>
-            
-            <div style="margin-top: 16px; background: #1a1a2e; border-radius: 8px; height: 10px; overflow: hidden;">
-                <div style="width: {score_display}%; height: 100%; background: linear-gradient(90deg, {color}, {color}88); border-radius: 8px;"></div>
-            </div>
-            
-            <div style="margin-top: 8px; font-size: 12px; color: #6b7280;">
-                This city ranks in the top {100 - score_display:.0f}% for {intent.replace('_', ' ')}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+    # Display using native Streamlit
+    st.subheader(title)
+    
+    col1, col2 = st.columns([3, 2])
+    
+    with col1:
+        st.markdown(f"### 🏙️ {city_name}")
+        st.caption(f"📍 {state_name}")
+    
+    with col2:
+        st.metric(
+            label="Match Score",
+            value=f"{score_display:.0f}/100",
+            delta=f"{emoji} {label}"
+        )
+    
+    # Progress bar
+    st.progress(int(min(100, score_display)) / 100)
+    st.caption(f"This city ranks in the top {100 - score_display:.0f}% for {intent.replace('_', ' ')}")
+    
+    st.divider()
     
 # -------------------------------------------------
 # CLUSTER SCATTER PLOT
