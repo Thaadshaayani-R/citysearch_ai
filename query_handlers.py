@@ -104,6 +104,28 @@ def handle_query(query, classification, df_features, get_engine_func=None,
         show_out_of_scope()
         return
     
+    # ========================================================
+    # SAFETY NET: Override for "best" queries if misclassified
+    # ========================================================
+    q_lower = query.lower()
+    original_mode = classification.get("original_mode", "")
+    
+    if "best" in q_lower and original_mode not in ["ml_family", "ml_young", "ml_retirement"]:
+        # Family keywords
+        if any(word in q_lower for word in ["family", "families", "kids", "children", "child", "kid"]):
+            handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "families")
+            return
+        
+        # Young professionals keywords
+        if any(word in q_lower for word in ["young", "professional", "adults", "adult", "career", "millennials"]):
+            handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "young_professionals")
+            return
+        
+        # Retirement keywords
+        if any(word in q_lower for word in ["retire", "retirement", "senior", "seniors", "elderly", "retirees"]):
+            handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "retirement")
+            return
+    
     if classification.get("use_gpt_knowledge", False):
         handle_gpt_knowledge_fallback(query)
         return
