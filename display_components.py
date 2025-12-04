@@ -933,14 +933,49 @@ def show_recommendation_card(top_city, intent: str, df: pd.DataFrame):
         else:
             label, emoji = "Below Average", "🟠"
     
-    # Intent titles
+# Dynamic title based on query
+    title = _generate_dynamic_title(query, intent) if 'query' in dir() else intent_titles.get(intent, "Top Recommended City")
+
+
+def _generate_dynamic_title(query: str, intent: str) -> str:
+    """Generate title dynamically based on user's actual query."""
+    q = query.lower()
+    
+    # Extract what user asked for
+    if "best" in q:
+        # Try to extract "best city for X" or "best X city"
+        import re
+        
+        # Pattern: "best city for X" or "best cities for X"
+        match = re.search(r"best\s+(?:city|cities|place|places)\s+(?:for|to live for)\s+(.+?)(?:\?|$)", q)
+        if match:
+            subject = match.group(1).strip()
+            # Clean up and capitalize
+            subject = subject.rstrip("?.,!")
+            return f"Best City for {subject.title()}"
+        
+        # Pattern: "best X city" or "best X cities"
+        match = re.search(r"best\s+(.+?)\s+(?:city|cities|place|places)", q)
+        if match:
+            subject = match.group(1).strip()
+            return f"Best {subject.title()} City"
+        
+        # Pattern: "which is best for X"
+        match = re.search(r"(?:which|what)\s+(?:is|are)\s+(?:the\s+)?best\s+(?:for\s+)?(.+?)(?:\?|$)", q)
+        if match:
+            subject = match.group(1).strip()
+            subject = subject.rstrip("?.,!")
+            if subject:
+                return f"Best City for {subject.title()}"
+    
+    # Fallback to intent-based titles
     intent_titles = {
         "families": "Best City for Families",
         "young_professionals": "Best City for Young Professionals",
         "retirement": "Best City for Retirement",
         "general": "Top Recommended City"
     }
-    title = intent_titles.get(intent, "Top Recommended City")
+    return intent_titles.get(intent, "Top Recommended City")
     
     # Display using native Streamlit
     st.subheader(title)
