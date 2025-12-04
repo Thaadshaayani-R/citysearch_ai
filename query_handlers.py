@@ -654,10 +654,11 @@ def handle_lifestyle_query(query, city_name, classification, df_features, get_en
         handle_gpt_knowledge_fallback(query)
 
 def handle_single_city_query(query, city_name, df_features, get_engine_func):
-    """Handle queries about a specific city."""
+    """Handle queries about a specific city with metric detection."""
     from sqlalchemy import text
     
     engine = get_engine_func()
+    q_lower = query.lower()
     
     # Try exact match first
     sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) = LOWER(:city)")
@@ -673,14 +674,102 @@ def handle_single_city_query(query, city_name, df_features, get_engine_func):
             with engine.connect() as conn:
                 result = conn.execute(sql, {"city": matched_city}).fetchone()
     
-    if result:
-        city_data = dict(result._mapping)
-        show_city_profile_card(
-            city_data.get("city", city_name), 
-            city_data.get("state", ""), 
-            pd.Series(city_data)
-        )
-    else:
+    if not result:
         st.warning(f"City '{city_name}' not found in our database.")
-        # Try GPT knowledge as fallback
         handle_gpt_knowledge_fallback(query)
+        return
+    
+    city_data = dict(result._mapping)
+    city = city_data.get("city", city_name)
+    state = city_data.get("state", "")
+    
+    # Detect if asking about a specific metric
+    metric_name = None
+    metric_value = None
+    
+    if "population" in q_lower:
+        metric_name = "Population"
+        metric_value = city_data.get("population", "N/A")
+    elif "median age" in q_lower or "age" in q_lower:
+        metric_name = "Median Age"
+        metric_value = city_data.get("median_age", "N/A")
+    elif "household" in q_lower or "family size" in q_lower:
+        metric_name = "Avg Household Size"
+        metric_value = city_data.get("avg_household_size", "N/A")
+    
+    # If specific metric requested, show metric card
+    if metric_name and metric_value:
+        # Format value
+        if isinstance(metric_value, (int, float)) and metric_value > 1000:
+            formatted_value = f"{int(metric_value):,}"
+        elif isinstance(metric_value, float):
+            formatted_value = f"{metric_value:.1f}"
+        else:
+            formatted_value = str(metric_value)
+        
+        # Display metric card
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            color: white;
+            text-align: center;
+        ">
+            <div style="font-size: 1rem; opacity: 0.9; margin-bottom: 0.5rem;">
+                {city}, {state}
+            </div>
+            <div style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 0.5rem;">
+                {metric_name}
+            </div>
+            <div style="font-size: 3.5rem; font-weight: 700;">
+                {formatted_value}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Generate AI summary about this specific metric
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
+            
+            prompt = f"""The user asked: "{query}"
+            
+            {city}, {state} has a {metric_name.lower()} of {formatted_value}.
+            
+            Additional context:
+            - Population: {city_data.get('population', 'N/A'):,}
+            - Median Age: {city_data.get('median_age', 'N/A')}
+            - Avg Household Size: {city_data.get('avg_household_size', 'N/A')}
+            
+            Give 2-3 short sentences explaining what this {metric_name.lower()} means for {city}. 
+            Include context like comparisons (is it large/small for a US city?) and what it suggests about the city's character.
+            Be concise and insightful."""
+            
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=150
+            )
+            summary = response.choices[0].message.content.strip()
+            
+            st.markdown(f"""
+            <div style="
+                background: rgba(102, 126, 234, 0.1);
+                border-left: 4px solid #667eea;
+                border-radius: 8px;
+                padding: 1rem;
+                margin-top: 1rem;
+            ">
+                <div style="font-size: 0.85rem; color: #667eea; margin-bottom: 0.5rem;">💡 Insight</div>
+                {summary}
+            </div>
+            """, unsafe_allow_html=True)
+            
+        except Exception as e:
+            pass  # Skip AI summary if it fails
+    
+    else:
+        # No specific metric - show full city profile
+        show_city_profile_card(city, state, pd.Series(city_data))
