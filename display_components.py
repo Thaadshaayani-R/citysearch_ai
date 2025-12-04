@@ -898,38 +898,76 @@ Keep it concise, friendly, and actionable.
 # -------------------------------------------------
 # RECOMMENDATION CARD
 # -------------------------------------------------
-def show_recommendation_card(top_city: pd.Series, category: str, all_results: pd.DataFrame = None):
-    """Display recommendation result card."""
+def show_recommendation_card(top_city, intent, df):
+    """Show recommendation with improved score display."""
     
-    # Title based on category
-    titles = {
+    city_name = top_city.get("city", "Unknown")
+    state_name = top_city.get("state", "")
+    raw_score = top_city.get("score", 0)
+    
+    # Get all scores for percentile calculation
+    all_scores = df["score"].values if "score" in df.columns else None
+    
+    # Import score formatting
+    try:
+        from core.score_translate import format_score_display
+        score_info = format_score_display(raw_score, all_scores)
+    except:
+        # Fallback
+        score_info = {
+            "score_100": min(100, raw_score * 10) if raw_score < 10 else raw_score,
+            "label": "Match",
+            "emoji": "🎯",
+            "color": "#6366f1"
+        }
+    
+    # Intent labels
+    intent_labels = {
         "families": "Best City for Families",
-        "young_professionals": "Best City for Young Professionals",
+        "young_professionals": "Best City for Young Professionals", 
         "retirement": "Best City for Retirement",
         "general": "Top Recommended City"
     }
-    title = titles.get(category, "Top Recommended City")
     
-    card_html = f"""
-    <div class="result-card">
-      <div class="result-card-title">{title}</div>
-      <div style="display: flex; justify-content: space-around; align-items: center; flex-wrap: wrap; gap: 1rem;">
-        <div style="text-align: center;">
-          <div style="font-size: 0.75rem; opacity: 0.9; margin-bottom: 0.25rem;">CITY</div>
-          <div class="result-card-value">{top_city["city"]}</div>
+    title = intent_labels.get(intent, "Top Recommended City")
+    
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
+        border-radius: 16px;
+        padding: 24px;
+        margin: 16px 0;
+        border: 1px solid #3d3d5c;
+    ">
+        <div style="font-size: 14px; color: #a0aec0; margin-bottom: 8px;">{title}</div>
+        
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div style="font-size: 28px; font-weight: 700; color: #fff;">{city_name}</div>
+                <div style="font-size: 16px; color: #a0aec0;">{state_name}</div>
+            </div>
+            
+            <div style="text-align: right;">
+                <div style="font-size: 32px; font-weight: 700; color: {score_info['color']};">
+                    {score_info['score_100']:.0f}<span style="font-size: 18px; color: #a0aec0;">/100</span>
+                </div>
+                <div style="font-size: 14px; color: {score_info['color']};">
+                    {score_info['emoji']} {score_info['label']}
+                </div>
+            </div>
         </div>
-        <div style="text-align: center;">
-          <div style="font-size: 0.75rem; opacity: 0.9; margin-bottom: 0.25rem;">STATE</div>
-          <div class="result-card-value">{top_city["state"]}</div>
+        
+        <!-- Progress Bar -->
+        <div style="margin-top: 16px; background: #1a1a2e; border-radius: 8px; height: 8px; overflow: hidden;">
+            <div style="
+                width: {score_info['score_100']}%;
+                height: 100%;
+                background: linear-gradient(90deg, {score_info['color']}, {score_info['color']}88);
+                border-radius: 8px;
+            "></div>
         </div>
-        <div style="text-align: center;">
-          <div style="font-size: 0.75rem; opacity: 0.9; margin-bottom: 0.25rem;">SCORE</div>
-          <div class="result-card-value">{top_city.get('score', 0):.3f}</div>
-        </div>
-      </div>
     </div>
-    """
-    st.markdown(card_html, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 
 # -------------------------------------------------
@@ -1006,20 +1044,32 @@ def show_lifestyle_card(city: str, state: str, population, median_age, household
 # -------------------------------------------------
 # CITY TABLE
 # -------------------------------------------------
-def show_city_table(df: pd.DataFrame, title: str = "Results", show_download: bool = True):
-    """Display a city table with optional download."""
+def show_city_table(df, title, show_download=True):
+    """Display city table with formatted scores."""
     
-    st.markdown(f"<div class='section-header'>{title}</div>", unsafe_allow_html=True)
-    st.dataframe(df, use_container_width=True, height=400)
+    # Format score column if present
+    if "score" in df.columns:
+        all_scores = df["score"].values
+        
+        # Add formatted columns
+        try:
+            from core.score_translate import normalize_to_100, to_level
+            df["Score (0-100)"] = df["score"].apply(lambda x: normalize_to_100(x, all_scores))
+            df["Rating"] = df["Score (0-100)"].apply(lambda x: to_level(x)[0])
+        except:
+            df["Score (0-100)"] = df["score"].apply(lambda x: round(min(100, x * 10), 1) if x < 10 else round(x, 1))
+        
+        # Optionally hide raw score
+        display_df = df.drop(columns=["score"], errors="ignore")
+    else:
+        display_df = df
+    
+    st.markdown(f"### {title}")
+    st.dataframe(display_df, use_container_width=True)
     
     if show_download:
-        csv = convert_df_to_csv(df)
-        st.download_button(
-            label="📥 Download CSV",
-            data=csv,
-            file_name="city_results.csv",
-            mime="text/csv",
-        )
+        csv = df.to_csv(index=False)
+        st.download_button("📥 Download CSV", csv, f"{title}.csv", "text/csv")
 
 
 # -------------------------------------------------
