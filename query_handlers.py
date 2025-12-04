@@ -193,12 +193,19 @@ def _build_basic_sql(query, classification, engine):
     if sort_dir:
         order = f"ORDER BY {metric} {'DESC' if sort_dir == 'highest' else 'ASC'}"
     
+    # Use engine.connect() and execute with text() for parameterized queries
     if state_filter:
-        sql = f"SELECT TOP {limit} * FROM {DB_TABLE_NAME} WHERE LOWER(state) = LOWER(:state) {order}"
-        return pd.read_sql(text(sql), engine, params={"state": state_filter})
+        sql = text(f"SELECT TOP {limit} * FROM {DB_TABLE_NAME} WHERE LOWER(state) = LOWER(:state) {order}")
+        with engine.connect() as conn:
+            result = conn.execute(sql, {"state": state_filter})
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+        return df
     else:
-        sql = f"SELECT TOP {limit} * FROM {DB_TABLE_NAME} {order}"
-        return pd.read_sql(text(sql), engine)
+        sql = text(f"SELECT TOP {limit} * FROM {DB_TABLE_NAME} {order}")
+        with engine.connect() as conn:
+            result = conn.execute(sql)
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+        return df
 
 
 def _display_sql_results(query, classification, df):
