@@ -270,25 +270,17 @@ def handle_ml_ranking(query, classification, df_features, get_engine_func, city_
     df = None
     if func:
         try:
-            df = func(state=state)
+            # Try with state parameter first, then without
+            try:
+                df = func(state=state)
+            except TypeError:
+                # Function doesn't accept state parameter
+                df = func()
+                # Filter by state manually if needed
+                if state and df is not None and not df.empty and "state" in df.columns:
+                    df = df[df["state"].str.lower() == state.lower()]
         except Exception as e:
             st.warning(f"ML error: {e}")
-    
-    if df is None or df.empty:
-        df = _fallback_ranking(df_features, intent, state)
-    
-    if df is not None and not df.empty:
-        show_recommendation_card(df.iloc[0], intent, df)
-        if explain_ml_results:
-            try:
-                insights = explain_ml_results(query, df)
-                if insights:
-                    st.markdown("### 🧠 Why These Cities?")
-                    st.markdown(insights)
-            except: pass
-        show_city_table(df, f"Best for {intent.replace('_',' ').title()}", True)
-    else:
-        st.warning("Could not generate rankings.")
 
 
 def _fallback_ranking(df_features, intent, state_filter=None):
