@@ -1049,32 +1049,60 @@ def show_lifestyle_card(city: str, state: str, population, median_age, household
 # -------------------------------------------------
 # CITY TABLE
 # -------------------------------------------------
-def show_city_table(df, title, show_download=True):
-    """Display city table with formatted scores."""
+def show_city_table(df: pd.DataFrame, title: str = "Results", show_download: bool = True):
+    """Display a formatted table of cities with improved score display."""
+    
+    if df is None or df.empty:
+        st.info("No data to display.")
+        return
+    
+    # Create display copy
+    display_df = df.copy()
     
     # Format score column if present
-    if "score" in df.columns:
-        all_scores = df["score"].values
+    if "score" in display_df.columns:
+        all_scores = display_df["score"].values
         
-        # Add formatted columns
         try:
             from core.score_translate import normalize_to_100, to_level
-            df["Score (0-100)"] = df["score"].apply(lambda x: normalize_to_100(x, all_scores))
-            df["Rating"] = df["Score (0-100)"].apply(lambda x: to_level(x)[0])
-        except:
-            df["Score (0-100)"] = df["score"].apply(lambda x: round(min(100, x * 10), 1) if x < 10 else round(x, 1))
-        
-        # Optionally hide raw score
-        display_df = df.drop(columns=["score"], errors="ignore")
-    else:
-        display_df = df
+            
+            # Add normalized score
+            display_df["Score (0-100)"] = display_df["score"].apply(
+                lambda x: normalize_to_100(x, all_scores)
+            )
+            
+            # Add rating label
+            display_df["Rating"] = display_df["Score (0-100)"].apply(
+                lambda x: to_level(x)[0]
+            )
+            
+            # Remove raw score column
+            display_df = display_df.drop(columns=["score"], errors="ignore")
+            
+        except Exception:
+            # Fallback: simple normalization
+            display_df["Score (0-100)"] = display_df["score"].apply(
+                lambda x: round(min(100, x * 10), 1) if x < 10 else round(x, 1)
+            )
+            display_df = display_df.drop(columns=["score"], errors="ignore")
     
-    st.markdown(f"### {title}")
-    st.dataframe(display_df, use_container_width=True)
+    # Format population if present
+    if "population" in display_df.columns:
+        display_df["population"] = display_df["population"].apply(
+            lambda x: f"{x:,}" if pd.notna(x) else "N/A"
+        )
+    
+    st.markdown(f"#### {title}")
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
     
     if show_download:
         csv = df.to_csv(index=False)
-        st.download_button("📥 Download CSV", csv, f"{title}.csv", "text/csv")
+        st.download_button(
+            label="📥 Download CSV",
+            data=csv,
+            file_name=f"{title.lower().replace(' ', '_')}.csv",
+            mime="text/csv"
+        )
 
 
 # -------------------------------------------------
