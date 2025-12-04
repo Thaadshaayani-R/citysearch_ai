@@ -24,13 +24,12 @@ from llm_classifier import classify_query_with_llm
 
 # Keywords that indicate HIGH confidence for each mode
 CONFIDENCE_PATTERNS = {
-    "ml_family": ["family", "families", "kids", "children", "child-friendly"],
-    "ml_young": ["young", "professional", "millennials", "gen z", "twenties", "career"],
-    "ml_retirement": ["retire", "retirement", "senior", "seniors", "elderly", "retiree"],
+    "ml_family": ["family", "families", "kids", "children", "child", "kid", "raising kids", "schools"],
+    "ml_young": ["young", "professional", "millennials", "adults", "adult", "young adult", "career", "jobs"],
+    "ml_retirement": ["retire", "retirement", "senior", "seniors", "elderly", "retirees", "older"],
     "ml_compare_cities": ["compare", " vs ", "versus", "difference between", "or better"],
     "ml_single_city": ["score for", "predict for", "rating for"],
     "semantic": ["life in", "living in", "like in", "lifestyle", "what's it like", "culture in"],
-    "hybrid": ["life in", "living in"],  # With state filter
     "sql": [
         "population", "how many", "count", "total", "average", "avg",
         "top", "largest", "smallest", "biggest", "highest", "lowest",
@@ -44,7 +43,7 @@ CONFIDENCE_PATTERNS = {
 CONFIDENT_MODES = [
     "ml_family", "ml_young", "ml_retirement", 
     "ml_compare_cities", "ml_single_city",
-    "semantic", "hybrid"
+    "semantic"
 ]
 
 
@@ -117,29 +116,16 @@ def _check_confidence(query: str, mode: str) -> str:
     """
     q = query.lower()
     
+    # IMPORTANT: "best" queries should be ML ranking, not semantic/sql
+    # If rule-based didn't detect ML mode for "best" query, use LLM
+    if "best" in q and mode not in ["ml_family", "ml_young", "ml_retirement"]:
+        return "low"  # Force LLM fallback
+    
     # Check if query matches confidence patterns for detected mode
     if mode in CONFIDENCE_PATTERNS:
         patterns = CONFIDENCE_PATTERNS[mode]
         if any(p in q for p in patterns):
             return "high"
-    
-    # ML modes are generally confident when detected
-    if mode in CONFIDENT_MODES:
-        return "high"
-    
-    # SQL mode needs pattern validation
-    if mode == "sql":
-        sql_patterns = CONFIDENCE_PATTERNS["sql"]
-        if any(p in q for p in sql_patterns):
-            return "high"
-        else:
-            # SQL is the default fallback in your classifier
-            # If no SQL patterns found, confidence is low
-            return "low"
-    
-    # Default to medium confidence
-    return "medium"
-
 
 # =============================================================================
 # BUILD RULE-BASED RESULT
