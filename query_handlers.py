@@ -114,6 +114,25 @@ def handle_query(query, classification, df_features, get_engine_func=None,
     # SAFETY NET 0: Single city questions (population of X, tell me about X)
     # ========================================================
     import re
+
+    # ========================================================
+    # SAFETY NET: Superlative questions (highest, largest, lowest, smallest)
+    # ========================================================
+    superlative_patterns = [
+        (r"(?:which|what)\s+(?:city|cities)\s+(?:has|have)\s+(?:the\s+)?(?:highest|largest|most|biggest)\s+(.+?)(?:\?|$)", "highest"),
+        (r"(?:which|what)\s+(?:city|cities)\s+(?:has|have)\s+(?:the\s+)?(?:lowest|smallest|least)\s+(.+?)(?:\?|$)", "lowest"),
+        (r"(?:highest|largest|most|biggest)\s+(.+?)\s+(?:city|cities)", "highest"),
+        (r"(?:lowest|smallest|least)\s+(.+?)\s+(?:city|cities)", "lowest"),
+        (r"(?:city|cities)\s+with\s+(?:the\s+)?(?:highest|largest|most|biggest)\s+(.+?)(?:\?|$)", "highest"),
+        (r"(?:city|cities)\s+with\s+(?:the\s+)?(?:lowest|smallest|least)\s+(.+?)(?:\?|$)", "lowest"),
+    ]
+    
+    for pattern, direction in superlative_patterns:
+        match = re.search(pattern, q_lower)
+        if match:
+            metric_text = match.group(1).strip().rstrip("?.,!")
+            handle_superlative_query(query, metric_text, direction, get_engine_func)
+            return
     
     # Pattern: "population of [city/state]" or "what is the population of [city/state]"
     pop_match = re.search(r"(?:what is the |what's the )?population (?:of |in )(.+?)(?:\?|$)", q_lower)
@@ -893,3 +912,149 @@ def handle_state_population_query(query, state_name, get_engine_func):
         st.markdown("#### 🏙️ Largest Cities")
         top_cities["population"] = top_cities["population"].apply(lambda x: f"{int(x):,}")
         st.dataframe(top_cities, use_container_width=True, hide_index=True)
+
+def handle_superlative_query(query, metric_text, direction, get_engine_func):
+    """Handle superlative questions like 'which city has the highest population'."""
+    from sqlalchemy import text
+    
+    engine = get_engine_func()
+    
+    # Map common metric names to column names
+    metric_map = {
+        "population": "population",
+        "people": "population",
+        "residents": "population",
+        "median age": "median_age",
+        "age": "median_age",
+        "oldest": "median_age",
+        "youngest": "median_age",
+        "household size": "avg_household_size",
+        "household": "avg_household_size",
+        "family size": "avg_household_size",
+    }
+    
+    # Find the metric column
+    metric_column = "population"  # default
+    for key, col in metric_map.items():
+        if key in metric_text.lower():
+            metric_column = col
+            break
+    
+    # Determine sort order
+    order = "DESC" if direction == "highest" else "ASC"
+    
+    # Get top 5 cities
+    sql = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} ORDER BY {metric_column} {order}")
+    with engine.connect() as conn:
+        result = conn.execute(sql)
+        df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    
+    if df.empty:
+        st.warning("No results found.")
+        return
+    
+    # Get the top city
+    top = df.iloc[0]
+    city = top.get("city", "Unknown")
+    state = top.get("state", "")
+    value = top.get(metric_column, "N/A")
+    
+    # Format value
+    if isinstance(value, (int, float)) and value > 1000:
+        formatted_value = f"{int(value):,}"
+    elif isinstance(value, float):
+        formatted_value = f"{value:.1f}"
+    else:
+        formatted_value = str(value)
+    
+    # Create label
+    metric_display = metric_column.replace("_", " ").title()
+    rank_label = f"{'Highest' if direction == 'highest' else 'Lowest'} {metric_display}"
+    
+    # Display superlative card
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        color: white;
+        text-align: center;
+    ">
+        <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem;">
+            🏆 {rank_label}
+        </div>
+        <div style="font-size: 2.5rem; font-weight: 700; margin-bottom: 0.25rem;">
+            {city}, {state}
+        </div>
+        <div style="font-size: 3rem; font-weight: 700;">
+            {formatted_value}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Show runners up
+    if len(df) > 1:
+        runners = df.iloc[1:5]
+        st.markdown("#### 🥈 Runners Up")
+        
+        for idx, row in runners.iterrows():
+            r_city = row.get("city", "")
+            r_state = row.get("state", "")
+            r_value = row.get(metric_column, "N/A")
+            
+            if isinstance(r_value, (int, float)) and r_value > 1000:
+                r_formatted = f"{int(r_value):,}"
+            elif isinstance(r_value, float):
+                r_formatted = f"{r_value:.1f}"
+            else:
+                r_formatted = str(r_value)
+            
+            st.markdown(f"""
+            <div style="
+                display: flex;
+                justify-content: space-between;
+                padding: 0.75rem 1rem;
+                background: rgba(102, 126, 234, 0.1);
+                border-radius: 8px;
+                margin-bottom: 0.5rem;
+            ">
+                <span>{r_city}, {r_state}</span>
+                <span style="font-weight: 600;">{r_formatted}</span>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # AI insight
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
+        
+        prompt = f"""The user asked: "{query}"
+        
+        Answer: {city}, {state} has the {direction} {metric_display.lower()} at {formatted_value}.
+        
+        Give 1-2 sentences of insight about why {city} has this ranking and what it means.
+        Be concise."""
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=100
+        )
+        summary = response.choices[0].message.content.strip()
+        
+        st.markdown(f"""
+        <div style="
+            background: rgba(102, 126, 234, 0.1);
+            border-left: 4px solid #667eea;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        ">
+            <div style="font-size: 0.85rem; color: #667eea; margin-bottom: 0.5rem;">💡 Insight</div>
+            {summary}
+        </div>
+        """, unsafe_allow_html=True)
+        
+    except Exception:
+        pass
