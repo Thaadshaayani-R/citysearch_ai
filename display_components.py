@@ -947,40 +947,40 @@ def show_recommendation_card(top_city, intent: str, df: pd.DataFrame):
     
     # Display card
     st.markdown(f"""
-    <div style="
-        background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
-        border-radius: 16px;
-        padding: 24px;
-        margin: 16px 0;
-        border: 1px solid #3d3d5c;
-    ">
-        <div style="font-size: 14px; color: #a0aec0; margin-bottom: 8px; font-weight: 500;">{title}</div>
-        
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
-            <div>
-                <div style="font-size: 28px; font-weight: 700; color: #fff;">{city_name}</div>
-                <div style="font-size: 16px; color: #a0aec0;">{state_name}</div>
+        <div style="
+            background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
+            border-radius: 16px;
+            padding: 24px;
+            margin: 16px 0;
+            border: 1px solid #3d3d5c;
+        ">
+            <div style="font-size: 14px; color: #a0aec0; margin-bottom: 8px; font-weight: 500;">{title}</div>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+                <div>
+                    <div style="font-size: 28px; font-weight: 700; color: #fff;">{city_name}</div>
+                    <div style="font-size: 16px; color: #a0aec0;">{state_name}</div>
+                </div>
+                
+                <div style="text-align: right;">
+                    <div style="font-size: 36px; font-weight: 700; color: {color};">
+                        {score_display:.0f}<span style="font-size: 18px; color: #a0aec0;">/100</span>
+                    </div>
+                    <div style="font-size: 14px; color: {color}; font-weight: 500;">
+                        {emoji} {label}
+                    </div>
+                </div>
             </div>
             
-            <div style="text-align: right;">
-                <div style="font-size: 36px; font-weight: 700; color: {color};">
-                    {score_display:.0f}<span style="font-size: 18px; color: #a0aec0;">/100</span>
-                </div>
-                <div style="font-size: 14px; color: {color}; font-weight: 500;">
-                    {emoji} {label}
-                </div>
+            <div style="margin-top: 16px; background: #1a1a2e; border-radius: 8px; height: 10px; overflow: hidden;">
+                <div style="width: {score_display}%; height: 100%; background: linear-gradient(90deg, {color}, {color}88); border-radius: 8px;"></div>
+            </div>
+            
+            <div style="margin-top: 8px; font-size: 12px; color: #6b7280;">
+                This city ranks in the top {100 - score_display:.0f}% for {intent.replace('_', ' ')}
             </div>
         </div>
-        
-        <div style="margin-top: 16px; background: #1a1a2e; border-radius: 8px; height: 10px; overflow: hidden;">
-            <div style="width: {score_display}%; height: 100%; background: linear-gradient(90deg, {color}, {color}88); border-radius: 8px;"></div>
-        </div>
-        
-        <div style="margin-top: 8px; font-size: 12px; color: #6b7280;">
-            This city ranks in the top {100 - score_display:.0f}% for {intent.replace('_', ' ')}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
     
 # -------------------------------------------------
 # CLUSTER SCATTER PLOT
