@@ -104,7 +104,7 @@ def handle_query(query, classification, df_features, get_engine_func=None,
         show_out_of_scope()
         return
     
-# ========================================================
+    # ========================================================
     # SAFETY NET: Override for misclassified queries
     # ========================================================
     q_lower = query.lower()
