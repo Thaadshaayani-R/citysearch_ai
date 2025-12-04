@@ -109,6 +109,26 @@ def handle_query(query, classification, df_features, get_engine_func=None,
     # ========================================================
     q_lower = query.lower()
     original_mode = classification.get("original_mode", "")
+
+    # ========================================================
+    # SAFETY NET 0: Single city questions (population of X, tell me about X)
+    # ========================================================
+    import re
+    
+    # Pattern: "population of [city]" or "what is the population of [city]"
+    pop_match = re.search(r"(?:what is the |what's the )?population (?:of |in )(.+?)(?:\?|$)", q_lower)
+    if pop_match:
+        city_name = pop_match.group(1).strip().rstrip("?.,!")
+        # Find and show just this city
+        handle_single_city_query(query, city_name, df_features, get_engine_func)
+        return
+    
+    # Pattern: "tell me about [city]" or "info on [city]"
+    about_match = re.search(r"(?:tell me about|info on|information about|details about)\s+(.+?)(?:\?|$)", q_lower)
+    if about_match:
+        city_name = about_match.group(1).strip().rstrip("?.,!")
+        handle_single_city_query(query, city_name, df_features, get_engine_func)
+        return
     
     # ========================================================
     # SAFETY NET 1: "Life in X" queries should show lifestyle/profile
@@ -631,4 +651,36 @@ def handle_lifestyle_query(query, city_name, classification, df_features, get_en
     else:
         # City not in database - use GPT knowledge
         st.warning(f"'{city_name.title()}' not found in our database. Showing general information.")
+        handle_gpt_knowledge_fallback(query)
+
+def handle_single_city_query(query, city_name, df_features, get_engine_func):
+    """Handle queries about a specific city."""
+    from sqlalchemy import text
+    
+    engine = get_engine_func()
+    
+    # Try exact match first
+    sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) = LOWER(:city)")
+    with engine.connect() as conn:
+        result = conn.execute(sql, {"city": city_name}).fetchone()
+    
+    # If not found, try fuzzy match
+    if not result:
+        city_list = df_features["city"].unique().tolist() if not df_features.empty else []
+        matched_city, score = fuzzy_match_city(city_name, city_list)
+        if matched_city and score > 70:
+            sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) = LOWER(:city)")
+            with engine.connect() as conn:
+                result = conn.execute(sql, {"city": matched_city}).fetchone()
+    
+    if result:
+        city_data = dict(result._mapping)
+        show_city_profile_card(
+            city_data.get("city", city_name), 
+            city_data.get("state", ""), 
+            pd.Series(city_data)
+        )
+    else:
+        st.warning(f"City '{city_name}' not found in our database.")
+        # Try GPT knowledge as fallback
         handle_gpt_knowledge_fallback(query)
