@@ -898,7 +898,7 @@ Keep it concise, friendly, and actionable.
 # -------------------------------------------------
 # RECOMMENDATION CARD
 # -------------------------------------------------
-def show_recommendation_card(top_city, intent: str, df: pd.DataFrame):
+def show_recommendation_card(top_city, intent: str, df: pd.DataFrame, query: str = ""):
     """Display recommendation card using native Streamlit components."""
     
     city_name = top_city.get("city", "Unknown")
