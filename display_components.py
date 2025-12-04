@@ -898,8 +898,8 @@ Keep it concise, friendly, and actionable.
 # -------------------------------------------------
 # RECOMMENDATION CARD
 # -------------------------------------------------
-def show_recommendation_card(top_city, intent, df):
-    """Show recommendation with improved score display."""
+def show_recommendation_card(top_city, intent: str, df: pd.DataFrame):
+    """Display recommendation card with improved score display."""
     
     city_name = top_city.get("city", "Unknown")
     state_name = top_city.get("state", "")
@@ -908,28 +908,29 @@ def show_recommendation_card(top_city, intent, df):
     # Get all scores for percentile calculation
     all_scores = df["score"].values if "score" in df.columns else None
     
-    # Import score formatting
+    # Import and calculate formatted score
     try:
         from core.score_translate import format_score_display
         score_info = format_score_display(raw_score, all_scores)
-    except:
+        score_display = score_info["score_100"]
+        label = score_info["label"]
+        emoji = score_info["emoji"]
+        color = score_info["color"]
+    except Exception:
         # Fallback
-        score_info = {
-            "score_100": min(100, raw_score * 10) if raw_score < 10 else raw_score,
-            "label": "Match",
-            "emoji": "🎯",
-            "color": "#6366f1"
-        }
+        score_display = round(min(100, raw_score * 10), 1) if raw_score < 10 else round(raw_score, 1)
+        label = "Match"
+        emoji = "🎯"
+        color = "#6366f1"
     
-    # Intent labels
-    intent_labels = {
+    # Intent titles
+    intent_titles = {
         "families": "Best City for Families",
-        "young_professionals": "Best City for Young Professionals", 
+        "young_professionals": "Best City for Young Professionals",
         "retirement": "Best City for Retirement",
         "general": "Top Recommended City"
     }
-    
-    title = intent_labels.get(intent, "Top Recommended City")
+    title = intent_titles.get(intent, "Top Recommended City")
     
     st.markdown(f"""
     <div style="
@@ -939,36 +940,40 @@ def show_recommendation_card(top_city, intent, df):
         margin: 16px 0;
         border: 1px solid #3d3d5c;
     ">
-        <div style="font-size: 14px; color: #a0aec0; margin-bottom: 8px;">{title}</div>
+        <div style="font-size: 14px; color: #a0aec0; margin-bottom: 8px; font-weight: 500;">{title}</div>
         
-        <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
             <div>
                 <div style="font-size: 28px; font-weight: 700; color: #fff;">{city_name}</div>
                 <div style="font-size: 16px; color: #a0aec0;">{state_name}</div>
             </div>
             
             <div style="text-align: right;">
-                <div style="font-size: 32px; font-weight: 700; color: {score_info['color']};">
-                    {score_info['score_100']:.0f}<span style="font-size: 18px; color: #a0aec0;">/100</span>
+                <div style="font-size: 36px; font-weight: 700; color: {color};">
+                    {score_display:.0f}<span style="font-size: 18px; color: #a0aec0;">/100</span>
                 </div>
-                <div style="font-size: 14px; color: {score_info['color']};">
-                    {score_info['emoji']} {score_info['label']}
+                <div style="font-size: 14px; color: {color}; font-weight: 500;">
+                    {emoji} {label}
                 </div>
             </div>
         </div>
         
         <!-- Progress Bar -->
-        <div style="margin-top: 16px; background: #1a1a2e; border-radius: 8px; height: 8px; overflow: hidden;">
+        <div style="margin-top: 16px; background: #1a1a2e; border-radius: 8px; height: 10px; overflow: hidden;">
             <div style="
-                width: {score_info['score_100']}%;
+                width: {score_display}%;
                 height: 100%;
-                background: linear-gradient(90deg, {score_info['color']}, {score_info['color']}88);
+                background: linear-gradient(90deg, {color}, {color}88);
                 border-radius: 8px;
+                transition: width 0.5s ease;
             "></div>
+        </div>
+        
+        <div style="margin-top: 8px; font-size: 12px; color: #6b7280;">
+            This city ranks in the top {100 - score_display:.0f}% for {intent.replace('_', ' ')}
         </div>
     </div>
     """, unsafe_allow_html=True)
-
 
 # -------------------------------------------------
 # CLUSTER SCATTER PLOT
