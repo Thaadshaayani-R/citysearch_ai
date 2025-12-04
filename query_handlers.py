@@ -104,12 +104,26 @@ def handle_query(query, classification, df_features, get_engine_func=None,
         show_out_of_scope()
         return
     
-    # ========================================================
-    # SAFETY NET: Override for "best" queries if misclassified
+# ========================================================
+    # SAFETY NET: Override for misclassified queries
     # ========================================================
     q_lower = query.lower()
     original_mode = classification.get("original_mode", "")
     
+    # ========================================================
+    # SAFETY NET 1: "Life in X" queries should show lifestyle/profile
+    # ========================================================
+    if "life in" in q_lower or "living in" in q_lower or "what is it like in" in q_lower:
+        import re
+        match = re.search(r"(?:life in|living in|what is it like in)\s+(.+?)(?:\?|$)", q_lower)
+        if match:
+            city_name = match.group(1).strip().rstrip("?.,!")
+            handle_lifestyle_query(query, city_name, classification, df_features, get_engine_func, city_list)
+            return
+    
+    # ========================================================
+    # SAFETY NET 2: "Best" queries should go to ML ranking
+    # ========================================================
     if "best" in q_lower and original_mode not in ["ml_family", "ml_young", "ml_retirement"]:
         # Family keywords
         if any(word in q_lower for word in ["family", "families", "kids", "children", "child", "kid"]):
@@ -551,3 +565,41 @@ def _show_fallback_data(df_features):
     st.markdown("### Available Data")
     if not df_features.empty:
         show_city_table(df_features.head(10), "Sample Cities", True)
+
+
+def handle_lifestyle_query(query, city_name, classification, df_features, get_engine_func, city_list):
+    """Handle 'Life in X' queries with city profile and AI summary."""
+    from sqlalchemy import text
+    
+    engine = get_engine_func()
+    
+    # Try to find the city
+    sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) = LOWER(:city)")
+    with engine.connect() as conn:
+        result = conn.execute(sql, {"city": city_name}).fetchone()
+    
+    if result:
+        city_data = dict(result._mapping)
+        
+        # Show city profile card
+        show_city_profile_card(city_data.get("city", city_name), city_data.get("state", ""), pd.Series(city_data))
+        
+        # Generate AI summary about life in this city
+        st.markdown("### 🏙️ What's Life Like?")
+        
+        try:
+            summary = generate_ai_summary(
+                f"Describe what life is like in {city_name}. "
+                f"Population: {city_data.get('population', 'N/A')}, "
+                f"Median Age: {city_data.get('median_age', 'N/A')}, "
+                f"Avg Household Size: {city_data.get('avg_household_size', 'N/A')}. "
+                f"Give a brief, engaging description of the lifestyle, culture, and what it's like to live there."
+            )
+            st.markdown(summary)
+        except Exception as e:
+            st.info(f"A city with population {city_data.get('population', 'N/A'):,} and median age {city_data.get('median_age', 'N/A')}.")
+        
+    else:
+        # City not in database - use GPT knowledge
+        st.warning(f"'{city_name.title()}' not found in our database. Showing general information.")
+        handle_gpt_knowledge_fallback(query)
