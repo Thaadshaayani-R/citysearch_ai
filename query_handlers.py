@@ -115,12 +115,20 @@ def handle_query(query, classification, df_features, get_engine_func=None,
     # ========================================================
     import re
     
-    # Pattern: "population of [city]" or "what is the population of [city]"
+    # Pattern: "population of [city/state]" or "what is the population of [city/state]"
     pop_match = re.search(r"(?:what is the |what's the )?population (?:of |in )(.+?)(?:\?|$)", q_lower)
     if pop_match:
-        city_name = pop_match.group(1).strip().rstrip("?.,!")
-        # Find and show just this city
-        handle_single_city_query(query, city_name, df_features, get_engine_func)
+        name = pop_match.group(1).strip().rstrip("?.,!")
+        
+        # Check if it's a state first
+        from utils import fuzzy_match_state
+        matched_state = fuzzy_match_state(name)
+        if matched_state:
+            handle_state_population_query(query, matched_state, get_engine_func)
+            return
+        
+        # Otherwise treat as city
+        handle_single_city_query(query, name, df_features, get_engine_func)
         return
     
     # Pattern: "tell me about [city]" or "info on [city]"
@@ -773,3 +781,115 @@ def handle_single_city_query(query, city_name, df_features, get_engine_func):
     else:
         # No specific metric - show full city profile
         show_city_profile_card(city, state, pd.Series(city_data))
+
+def handle_state_population_query(query, state_name, get_engine_func):
+    """Handle queries about state population."""
+    from sqlalchemy import text
+    
+    engine = get_engine_func()
+    
+    # Get state statistics
+    sql = text(f"""
+        SELECT 
+            state,
+            COUNT(*) as city_count,
+            SUM(population) as total_population,
+            AVG(median_age) as avg_median_age,
+            AVG(avg_household_size) as avg_household_size
+        FROM {DB_TABLE_NAME} 
+        WHERE LOWER(state) = LOWER(:state) 
+        GROUP BY state
+    """)
+    
+    with engine.connect() as conn:
+        result = conn.execute(sql, {"state": state_name}).fetchone()
+    
+    if not result:
+        st.warning(f"State '{state_name}' not found in our database.")
+        handle_gpt_knowledge_fallback(query)
+        return
+    
+    state_data = dict(result._mapping)
+    total_pop = state_data.get("total_population", 0)
+    city_count = state_data.get("city_count", 0)
+    
+    # Format population
+    if isinstance(total_pop, (int, float)):
+        formatted_pop = f"{int(total_pop):,}"
+    else:
+        formatted_pop = str(total_pop)
+    
+    # Display state population card
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        color: white;
+        text-align: center;
+    ">
+        <div style="font-size: 1rem; opacity: 0.9; margin-bottom: 0.5rem;">
+            {state_name}
+        </div>
+        <div style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 0.5rem;">
+            Total Population
+        </div>
+        <div style="font-size: 3.5rem; font-weight: 700;">
+            {formatted_pop}
+        </div>
+        <div style="font-size: 0.85rem; opacity: 0.8; margin-top: 0.5rem;">
+            Across {city_count} cities in our database
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Generate AI summary
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
+        
+        prompt = f"""The user asked about the population of {state_name}.
+        
+        Based on our database:
+        - Total population: {formatted_pop}
+        - Number of cities: {city_count}
+        - Average median age: {state_data.get('avg_median_age', 'N/A'):.1f} years
+        - Average household size: {state_data.get('avg_household_size', 'N/A'):.2f}
+        
+        Give 2-3 short sentences about {state_name}'s population. Include context about its ranking among US states and what the demographics suggest about the state.
+        Be concise and insightful."""
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=150
+        )
+        summary = response.choices[0].message.content.strip()
+        
+        st.markdown(f"""
+        <div style="
+            background: rgba(17, 153, 142, 0.1);
+            border-left: 4px solid #11998e;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        ">
+            <div style="font-size: 0.85rem; color: #11998e; margin-bottom: 0.5rem;">💡 Insight</div>
+            {summary}
+        </div>
+        """, unsafe_allow_html=True)
+        
+    except Exception:
+        pass
+    
+    # Show top cities in this state
+    sql2 = text(f"SELECT TOP 5 city, population FROM {DB_TABLE_NAME} WHERE LOWER(state) = LOWER(:state) ORDER BY population DESC")
+    with engine.connect() as conn:
+        result2 = conn.execute(sql2, {"state": state_name})
+        top_cities = pd.DataFrame(result2.fetchall(), columns=result2.keys())
+    
+    if not top_cities.empty:
+        st.markdown("#### 🏙️ Largest Cities")
+        top_cities["population"] = top_cities["population"].apply(lambda x: f"{int(x):,}")
+        st.dataframe(top_cities, use_container_width=True, hide_index=True)
