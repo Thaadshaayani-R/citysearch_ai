@@ -603,16 +603,30 @@ def handle_lifestyle_query(query, city_name, classification, df_features, get_en
         st.markdown("### 🏙️ What's Life Like?")
         
         try:
-            summary = generate_ai_summary(
-                f"Describe what life is like in {city_name}. "
-                f"Population: {city_data.get('population', 'N/A')}, "
-                f"Median Age: {city_data.get('median_age', 'N/A')}, "
-                f"Avg Household Size: {city_data.get('avg_household_size', 'N/A')}. "
-                f"Give a brief, engaging description of the lifestyle, culture, and what it's like to live there."
+            # Use OpenAI directly for lifestyle summary
+            from openai import OpenAI
+            client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
+            
+            prompt = f"""Describe what life is like in {city_name}. 
+            Population: {city_data.get('population', 'N/A')}, 
+            Median Age: {city_data.get('median_age', 'N/A')}, 
+            Avg Household Size: {city_data.get('avg_household_size', 'N/A')}. 
+            Give a brief, engaging 2-3 sentence description of the lifestyle, culture, and what it's like to live there."""
+            
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=200
             )
+            summary = response.choices[0].message.content.strip()
             st.markdown(summary)
         except Exception as e:
-            st.info(f"A city with population {city_data.get('population', 'N/A'):,} and median age {city_data.get('median_age', 'N/A')}.")
+            pop = city_data.get('population', 'N/A')
+            age = city_data.get('median_age', 'N/A')
+            if isinstance(pop, (int, float)):
+                st.info(f"A city with population {pop:,} and median age {age}.")
+            else:
+                st.info(f"A city with population {pop} and median age {age}.")
         
     else:
         # City not in database - use GPT knowledge
