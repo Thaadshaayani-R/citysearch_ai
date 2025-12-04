@@ -398,7 +398,9 @@ def handle_single_state(query, classification, df_features, get_engine_func, cit
     if r:
         d = dict(r._mapping)
         sql2 = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) ORDER BY population DESC")
-        cities = pd.read_sql(sql2, engine, params={"s": state})
+        with engine.connect() as conn:
+            result = conn.execute(sql2, {"s": state})
+            cities = pd.DataFrame(result.fetchall(), columns=result.keys())
         show_state_metric_card(state, "Population", d.get("total_pop",0), d.get("city_count",0), cities)
     else:
         st.warning(f"State '{state}' not found.")
@@ -553,10 +555,14 @@ def _handle_superlative(query, classification, get_engine_func):
     
     if state:
         sql = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) ORDER BY {metric} {order}")
-        df = pd.read_sql(sql, engine, params={"s": state})
+        with engine.connect() as conn:
+            result = conn.execute(sql, {"s": state})
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
     else:
         sql = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} ORDER BY {metric} {order}")
-        df = pd.read_sql(sql, engine)
+        with engine.connect() as conn:
+            result = conn.execute(sql)
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
     
     if df.empty:
         st.warning("No results.")
