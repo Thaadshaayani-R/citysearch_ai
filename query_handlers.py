@@ -92,7 +92,7 @@ from utils import (
 )
 
 
-def _query(query, classification, df_features, get_engine_func=None, 
+def handle_query(query, classification, df_features, get_engine_func=None, 
                  smart_route_func=None, lifestyle_rag_func=None, classify_intent_func=None):
     """Main query handler."""
     if get_engine_func is None:
