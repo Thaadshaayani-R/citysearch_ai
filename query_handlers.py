@@ -92,7 +92,7 @@ from utils import (
 )
 
 
-def handle_query(query, classification, df_features, get_engine_func=None, 
+def _query(query, classification, df_features, get_engine_func=None, 
                  smart_route_func=None, lifestyle_rag_func=None, classify_intent_func=None):
     """Main query handler."""
     if get_engine_func is None:
@@ -407,43 +407,53 @@ def handle_single_state(query, classification, df_features, get_engine_func, cit
 def handle_comparison(query, classification, df_features, get_engine_func, city_list):
     """Handle comparison."""
     ctype = classification.get("comparison_type", "city_vs_city")
+    engine = get_engine_func()
     
     if ctype == "state_vs_state":
         states = classification.get("mentioned_states", [])
         if len(states) < 2:
             r = extract_two_states_fuzzy(query)
-            if r and len(r) >= 2: states = [r[0], r[1]]
+            if r and len(r) >= 2:
+                states = [r[0], r[1]]
         if len(states) < 2:
             st.warning("Could not find two states to compare.")
             return
         
-        engine = get_engine_func()
-        def stats(s):
+        def get_state_stats(s):
             sql = text(f"SELECT state, COUNT(*) as cnt, SUM(population) as pop, AVG(median_age) as age FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) GROUP BY state")
             with engine.connect() as conn:
                 r = conn.execute(sql, {"s": s}).fetchone()
             return dict(r._mapping) if r else {}
-        def cities(s):
-            return pd.read_sql(text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) ORDER BY population DESC"), engine, params={"s": s})
         
-        s1, s2 = stats(states[0]), stats(states[1])
-        c1, c2 = cities(states[0]), cities(states[1])
+        def get_state_cities(s):
+            sql = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) ORDER BY population DESC")
+            with engine.connect() as conn:
+                result = conn.execute(sql, {"s": s})
+                return pd.DataFrame(result.fetchall(), columns=result.keys())
+        
+        s1, s2 = get_state_stats(states[0]), get_state_stats(states[1])
+        c1, c2 = get_state_cities(states[0]), get_state_cities(states[1])
+        
         if s1 and s2:
             show_state_comparison(states[0], s1, c1, states[1], s2, c2, query)
         else:
             st.warning("Could not find both states.")
     else:
+        # City vs City comparison
         cities = classification.get("mentioned_cities", [])
         if len(cities) < 2:
             r = extract_two_cities_fuzzy(query, city_list)
-            if r and len(r) >= 2: cities = [r[0], r[1]]
+            if r and len(r) >= 2:
+                cities = [r[0], r[1]]
         if len(cities) < 2:
             st.warning("Could not find two cities to compare.")
             return
         
-        engine = get_engine_func()
+        # Fixed SQL execution
         sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) IN (LOWER(:c1), LOWER(:c2))")
-        df = pd.read_sql(sql, engine, params={"c1": cities[0], "c2": cities[1]})
+        with engine.connect() as conn:
+            result = conn.execute(sql, {"c1": cities[0], "c2": cities[1]})
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
         
         if len(df) >= 2:
             r1 = df[df["city"].str.lower() == cities[0].lower()].iloc[0]
@@ -451,7 +461,6 @@ def handle_comparison(query, classification, df_features, get_engine_func, city_
             show_city_comparison(r1, r2, query)
         else:
             st.warning("Could not find both cities.")
-
 
 def handle_city_profile(query, classification, df_features, get_engine_func, city_list):
     """Handle city profile."""
