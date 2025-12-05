@@ -252,7 +252,16 @@ if mode == "Search":
             }
             st.caption(source_labels.get(source, f"⚡ Classified ({source})"))
         else:
-            st.caption(f"🤖 Classified using AI (confidence: {confidence})")
+            # Display classification source
+            source = classification.get("source", "unknown")
+            source_labels = {
+                "cache": "⚡ Cached (instant)",
+                "pattern": "⚡ Pattern match (free)",
+                "llm": "🧠 LLM classified",
+                "rule_based": "📋 Rule-based"
+            }
+            query_type = classification.get("query_type", "")
+            st.caption(f"{source_labels.get(source, '🤖 Classified')} → {query_type}")
         
         # Debug: Show classification (can be removed in production)
         # with st.expander("🔍 Debug: Query Classification", expanded=False):
