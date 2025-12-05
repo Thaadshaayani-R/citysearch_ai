@@ -109,6 +109,53 @@ def handle_query(query, classification, df_features, get_engine_func=None,
     # ========================================================
     q_lower = query.lower()
     original_mode = classification.get("original_mode", "")
+
+    # ========================================================
+    # SAFETY NET 0: Single city questions (population of X, tell me about X)
+    # ========================================================
+    import re
+
+    # ========================================================
+    # SAFETY NET: Superlative questions (highest, largest, lowest, smallest)
+    # ========================================================
+    superlative_patterns = [
+        (r"(?:which|what)\s+(?:city|cities)\s+(?:has|have)\s+(?:the\s+)?(?:highest|largest|most|biggest)\s+(.+?)(?:\?|$)", "highest"),
+        (r"(?:which|what)\s+(?:city|cities)\s+(?:has|have)\s+(?:the\s+)?(?:lowest|smallest|least)\s+(.+?)(?:\?|$)", "lowest"),
+        (r"(?:highest|largest|most|biggest)\s+(.+?)\s+(?:city|cities)", "highest"),
+        (r"(?:lowest|smallest|least)\s+(.+?)\s+(?:city|cities)", "lowest"),
+        (r"(?:city|cities)\s+with\s+(?:the\s+)?(?:highest|largest|most|biggest)\s+(.+?)(?:\?|$)", "highest"),
+        (r"(?:city|cities)\s+with\s+(?:the\s+)?(?:lowest|smallest|least)\s+(.+?)(?:\?|$)", "lowest"),
+    ]
+    
+    for pattern, direction in superlative_patterns:
+        match = re.search(pattern, q_lower)
+        if match:
+            metric_text = match.group(1).strip().rstrip("?.,!")
+            handle_superlative_query(query, metric_text, direction, get_engine_func)
+            return
+    
+    # Pattern: "population of [city/state]" or "what is the population of [city/state]"
+    pop_match = re.search(r"(?:what is the |what's the )?population (?:of |in )(.+?)(?:\?|$)", q_lower)
+    if pop_match:
+        name = pop_match.group(1).strip().rstrip("?.,!")
+        
+        # Check if it's a state first
+        from utils import fuzzy_match_state
+        matched_state = fuzzy_match_state(name)
+        if matched_state:
+            handle_state_population_query(query, matched_state, get_engine_func)
+            return
+        
+        # Otherwise treat as city
+        handle_single_city_query(query, name, df_features, get_engine_func)
+        return
+    
+    # Pattern: "tell me about [city]" or "info on [city]"
+    about_match = re.search(r"(?:tell me about|info on|information about|details about)\s+(.+?)(?:\?|$)", q_lower)
+    if about_match:
+        city_name = about_match.group(1).strip().rstrip("?.,!")
+        handle_single_city_query(query, city_name, df_features, get_engine_func)
+        return
     
     # ========================================================
     # SAFETY NET 1: "Life in X" queries should show lifestyle/profile
@@ -398,7 +445,9 @@ def handle_single_state(query, classification, df_features, get_engine_func, cit
     if r:
         d = dict(r._mapping)
         sql2 = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) ORDER BY population DESC")
-        cities = pd.read_sql(sql2, engine, params={"s": state})
+        with engine.connect() as conn:
+            result = conn.execute(sql2, {"s": state})
+            cities = pd.DataFrame(result.fetchall(), columns=result.keys())
         show_state_metric_card(state, "Population", d.get("total_pop",0), d.get("city_count",0), cities)
     else:
         st.warning(f"State '{state}' not found.")
@@ -553,10 +602,14 @@ def _handle_superlative(query, classification, get_engine_func):
     
     if state:
         sql = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) ORDER BY {metric} {order}")
-        df = pd.read_sql(sql, engine, params={"s": state})
+        with engine.connect() as conn:
+            result = conn.execute(sql, {"s": state})
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
     else:
         sql = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} ORDER BY {metric} {order}")
-        df = pd.read_sql(sql, engine)
+        with engine.connect() as conn:
+            result = conn.execute(sql)
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
     
     if df.empty:
         st.warning("No results.")
@@ -597,18 +650,411 @@ def handle_lifestyle_query(query, city_name, classification, df_features, get_en
         st.markdown("### 🏙️ What's Life Like?")
         
         try:
-            summary = generate_ai_summary(
-                f"Describe what life is like in {city_name}. "
-                f"Population: {city_data.get('population', 'N/A')}, "
-                f"Median Age: {city_data.get('median_age', 'N/A')}, "
-                f"Avg Household Size: {city_data.get('avg_household_size', 'N/A')}. "
-                f"Give a brief, engaging description of the lifestyle, culture, and what it's like to live there."
+            # Use OpenAI directly for lifestyle summary
+            from openai import OpenAI
+            client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
+            
+            prompt = f"""Describe what life is like in {city_name}. 
+            Population: {city_data.get('population', 'N/A')}, 
+            Median Age: {city_data.get('median_age', 'N/A')}, 
+            Avg Household Size: {city_data.get('avg_household_size', 'N/A')}. 
+            Give a brief, engaging 2-3 sentence description of the lifestyle, culture, and what it's like to live there."""
+            
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=200
             )
+            summary = response.choices[0].message.content.strip()
             st.markdown(summary)
         except Exception as e:
-            st.info(f"A city with population {city_data.get('population', 'N/A'):,} and median age {city_data.get('median_age', 'N/A')}.")
+            pop = city_data.get('population', 'N/A')
+            age = city_data.get('median_age', 'N/A')
+            if isinstance(pop, (int, float)):
+                st.info(f"A city with population {pop:,} and median age {age}.")
+            else:
+                st.info(f"A city with population {pop} and median age {age}.")
         
     else:
         # City not in database - use GPT knowledge
         st.warning(f"'{city_name.title()}' not found in our database. Showing general information.")
         handle_gpt_knowledge_fallback(query)
+
+def handle_single_city_query(query, city_name, df_features, get_engine_func):
+    """Handle queries about a specific city with metric detection."""
+    from sqlalchemy import text
+    
+    engine = get_engine_func()
+    q_lower = query.lower()
+    
+    # Try exact match first
+    sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) = LOWER(:city)")
+    with engine.connect() as conn:
+        result = conn.execute(sql, {"city": city_name}).fetchone()
+    
+    # If not found, try fuzzy match
+    if not result:
+        city_list = df_features["city"].unique().tolist() if not df_features.empty else []
+        matched_city, score = fuzzy_match_city(city_name, city_list)
+        if matched_city and score > 70:
+            sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) = LOWER(:city)")
+            with engine.connect() as conn:
+                result = conn.execute(sql, {"city": matched_city}).fetchone()
+    
+    if not result:
+        st.warning(f"City '{city_name}' not found in our database.")
+        handle_gpt_knowledge_fallback(query)
+        return
+    
+    city_data = dict(result._mapping)
+    city = city_data.get("city", city_name)
+    state = city_data.get("state", "")
+    
+    # Detect if asking about a specific metric
+    metric_name = None
+    metric_value = None
+    
+    if "population" in q_lower:
+        metric_name = "Population"
+        metric_value = city_data.get("population", "N/A")
+    elif "median age" in q_lower or "age" in q_lower:
+        metric_name = "Median Age"
+        metric_value = city_data.get("median_age", "N/A")
+    elif "household" in q_lower or "family size" in q_lower:
+        metric_name = "Avg Household Size"
+        metric_value = city_data.get("avg_household_size", "N/A")
+    
+    # If specific metric requested, show metric card
+    if metric_name and metric_value:
+        # Format value
+        if isinstance(metric_value, (int, float)) and metric_value > 1000:
+            formatted_value = f"{int(metric_value):,}"
+        elif isinstance(metric_value, float):
+            formatted_value = f"{metric_value:.1f}"
+        else:
+            formatted_value = str(metric_value)
+        
+        # Display metric card
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            color: white;
+            text-align: center;
+        ">
+            <div style="font-size: 1rem; opacity: 0.9; margin-bottom: 0.5rem;">
+                {city}, {state}
+            </div>
+            <div style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 0.5rem;">
+                {metric_name}
+            </div>
+            <div style="font-size: 3.5rem; font-weight: 700;">
+                {formatted_value}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Generate AI summary about this specific metric
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
+            
+            prompt = f"""The user asked: "{query}"
+            
+            {city}, {state} has a {metric_name.lower()} of {formatted_value}.
+            
+            Additional context:
+            - Population: {city_data.get('population', 'N/A'):,}
+            - Median Age: {city_data.get('median_age', 'N/A')}
+            - Avg Household Size: {city_data.get('avg_household_size', 'N/A')}
+            
+            Give 2-3 short sentences explaining what this {metric_name.lower()} means for {city}. 
+            Include context like comparisons (is it large/small for a US city?) and what it suggests about the city's character.
+            Be concise and insightful."""
+            
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=150
+            )
+            summary = response.choices[0].message.content.strip()
+            
+            st.markdown(f"""
+            <div style="
+                background: rgba(102, 126, 234, 0.1);
+                border-left: 4px solid #667eea;
+                border-radius: 8px;
+                padding: 1rem;
+                margin-top: 1rem;
+            ">
+                <div style="font-size: 0.85rem; color: #667eea; margin-bottom: 0.5rem;">💡 Insight</div>
+                {summary}
+            </div>
+            """, unsafe_allow_html=True)
+            
+        except Exception as e:
+            pass  # Skip AI summary if it fails
+    
+    else:
+        # No specific metric - show full city profile
+        show_city_profile_card(city, state, pd.Series(city_data))
+
+def handle_state_population_query(query, state_name, get_engine_func):
+    """Handle queries about state population."""
+    from sqlalchemy import text
+    
+    engine = get_engine_func()
+    
+    # Get state statistics
+    sql = text(f"""
+        SELECT 
+            state,
+            COUNT(*) as city_count,
+            SUM(population) as total_population,
+            AVG(median_age) as avg_median_age,
+            AVG(avg_household_size) as avg_household_size
+        FROM {DB_TABLE_NAME} 
+        WHERE LOWER(state) = LOWER(:state) 
+        GROUP BY state
+    """)
+    
+    with engine.connect() as conn:
+        result = conn.execute(sql, {"state": state_name}).fetchone()
+    
+    if not result:
+        st.warning(f"State '{state_name}' not found in our database.")
+        handle_gpt_knowledge_fallback(query)
+        return
+    
+    state_data = dict(result._mapping)
+    total_pop = state_data.get("total_population", 0)
+    city_count = state_data.get("city_count", 0)
+    
+    # Format population
+    if isinstance(total_pop, (int, float)):
+        formatted_pop = f"{int(total_pop):,}"
+    else:
+        formatted_pop = str(total_pop)
+    
+    # Display state population card
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        color: white;
+        text-align: center;
+    ">
+        <div style="font-size: 1rem; opacity: 0.9; margin-bottom: 0.5rem;">
+            {state_name}
+        </div>
+        <div style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 0.5rem;">
+            Total Population
+        </div>
+        <div style="font-size: 3.5rem; font-weight: 700;">
+            {formatted_pop}
+        </div>
+        <div style="font-size: 0.85rem; opacity: 0.8; margin-top: 0.5rem;">
+            Across {city_count} cities in our database
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Generate AI summary
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
+        
+        prompt = f"""The user asked about the population of {state_name}.
+        
+        Based on our database:
+        - Total population: {formatted_pop}
+        - Number of cities: {city_count}
+        - Average median age: {state_data.get('avg_median_age', 'N/A'):.1f} years
+        - Average household size: {state_data.get('avg_household_size', 'N/A'):.2f}
+        
+        Give 2-3 short sentences about {state_name}'s population. Include context about its ranking among US states and what the demographics suggest about the state.
+        Be concise and insightful."""
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=150
+        )
+        summary = response.choices[0].message.content.strip()
+        
+        st.markdown(f"""
+        <div style="
+            background: rgba(17, 153, 142, 0.1);
+            border-left: 4px solid #11998e;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        ">
+            <div style="font-size: 0.85rem; color: #11998e; margin-bottom: 0.5rem;">💡 Insight</div>
+            {summary}
+        </div>
+        """, unsafe_allow_html=True)
+        
+    except Exception:
+        pass
+    
+    # Show top cities in this state
+    sql2 = text(f"SELECT TOP 5 city, population FROM {DB_TABLE_NAME} WHERE LOWER(state) = LOWER(:state) ORDER BY population DESC")
+    with engine.connect() as conn:
+        result2 = conn.execute(sql2, {"state": state_name})
+        top_cities = pd.DataFrame(result2.fetchall(), columns=result2.keys())
+    
+    if not top_cities.empty:
+        st.markdown("#### 🏙️ Largest Cities")
+        top_cities["population"] = top_cities["population"].apply(lambda x: f"{int(x):,}")
+        st.dataframe(top_cities, use_container_width=True, hide_index=True)
+
+def handle_superlative_query(query, metric_text, direction, get_engine_func):
+    """Handle superlative questions like 'which city has the highest population'."""
+    from sqlalchemy import text
+    
+    engine = get_engine_func()
+    
+    # Map common metric names to column names
+    metric_map = {
+        "population": "population",
+        "people": "population",
+        "residents": "population",
+        "median age": "median_age",
+        "age": "median_age",
+        "oldest": "median_age",
+        "youngest": "median_age",
+        "household size": "avg_household_size",
+        "household": "avg_household_size",
+        "family size": "avg_household_size",
+    }
+    
+    # Find the metric column
+    metric_column = "population"  # default
+    for key, col in metric_map.items():
+        if key in metric_text.lower():
+            metric_column = col
+            break
+    
+    # Determine sort order
+    order = "DESC" if direction == "highest" else "ASC"
+    
+    # Get top 5 cities
+    sql = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} ORDER BY {metric_column} {order}")
+    with engine.connect() as conn:
+        result = conn.execute(sql)
+        df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    
+    if df.empty:
+        st.warning("No results found.")
+        return
+    
+    # Get the top city
+    top = df.iloc[0]
+    city = top.get("city", "Unknown")
+    state = top.get("state", "")
+    value = top.get(metric_column, "N/A")
+    
+    # Format value
+    if isinstance(value, (int, float)) and value > 1000:
+        formatted_value = f"{int(value):,}"
+    elif isinstance(value, float):
+        formatted_value = f"{value:.1f}"
+    else:
+        formatted_value = str(value)
+    
+    # Create label
+    metric_display = metric_column.replace("_", " ").title()
+    rank_label = f"{'Highest' if direction == 'highest' else 'Lowest'} {metric_display}"
+    
+    # Display superlative card
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        color: white;
+        text-align: center;
+    ">
+        <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem;">
+            🏆 {rank_label}
+        </div>
+        <div style="font-size: 2.5rem; font-weight: 700; margin-bottom: 0.25rem;">
+            {city}, {state}
+        </div>
+        <div style="font-size: 3rem; font-weight: 700;">
+            {formatted_value}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Show runners up
+    if len(df) > 1:
+        runners = df.iloc[1:5]
+        st.markdown("#### 🥈 Runners Up")
+        
+        for idx, row in runners.iterrows():
+            r_city = row.get("city", "")
+            r_state = row.get("state", "")
+            r_value = row.get(metric_column, "N/A")
+            
+            if isinstance(r_value, (int, float)) and r_value > 1000:
+                r_formatted = f"{int(r_value):,}"
+            elif isinstance(r_value, float):
+                r_formatted = f"{r_value:.1f}"
+            else:
+                r_formatted = str(r_value)
+            
+            st.markdown(f"""
+            <div style="
+                display: flex;
+                justify-content: space-between;
+                padding: 0.75rem 1rem;
+                background: rgba(102, 126, 234, 0.1);
+                border-radius: 8px;
+                margin-bottom: 0.5rem;
+            ">
+                <span>{r_city}, {r_state}</span>
+                <span style="font-weight: 600;">{r_formatted}</span>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # AI insight
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
+        
+        prompt = f"""The user asked: "{query}"
+        
+        Answer: {city}, {state} has the {direction} {metric_display.lower()} at {formatted_value}.
+        
+        Give 1-2 sentences of insight about why {city} has this ranking and what it means.
+        Be concise."""
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=100
+        )
+        summary = response.choices[0].message.content.strip()
+        
+        st.markdown(f"""
+        <div style="
+            background: rgba(102, 126, 234, 0.1);
+            border-left: 4px solid #667eea;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        ">
+            <div style="font-size: 0.85rem; color: #667eea; margin-bottom: 0.5rem;">💡 Insight</div>
+            {summary}
+        </div>
+        """, unsafe_allow_html=True)
+        
+    except Exception:
+        pass
