@@ -1,79 +1,148 @@
-"""
-CitySearch AI - Hybrid Query Classifier
-========================================
-Cost-efficient query classification:
-1. Try rule-based classifier first (FREE)
-2. If unsure, fallback to LLM (costs $)
-3. Handle city-related vs out-of-scope queries
-
-This approach saves 80-90% on API costs while maintaining accuracy.
-"""
-
 import streamlit as st
+import json
+import hashlib
 
-# Import your existing rule-based classifier
-from core.intent_classifier import classify_query_intent
-
-# Import LLM classifier for fallback
-from llm_classifier import classify_query_with_llm
-
-
-# =============================================================================
-# CONFIDENCE KEYWORDS
-# =============================================================================
-
-# Keywords that indicate HIGH confidence for each mode
-CONFIDENCE_PATTERNS = {
-    "ml_family": ["family", "families", "kids", "children", "child", "kid", "raising kids", "schools"],
-    "ml_young": ["young", "professional", "millennials", "adults", "adult", "young adult", "career", "jobs"],
-    "ml_retirement": ["retire", "retirement", "senior", "seniors", "elderly", "retirees", "older"],
-    "ml_compare_cities": ["compare", " vs ", "versus", "difference between", "or better"],
-    "ml_single_city": ["score for", "predict for", "rating for"],
-    "semantic": ["life in", "living in", "like in", "lifestyle", "what's it like", "culture in"],
-    "sql": [
-        "population", "how many", "count", "total", "average", "avg",
-        "top", "largest", "smallest", "biggest", "highest", "lowest",
-        "median age", "household size", "list", "show me", "cities in",
-        "greater than", "less than", "more than", "under", "over",
-        "between", "sort by", "order by"
-    ],
-}
-
-# Modes that are considered "confident" when matched
-CONFIDENT_MODES = [
-    "ml_family", "ml_young", "ml_retirement", 
-    "ml_compare_cities", "ml_single_city",
-    "semantic"
-]
-
-
-# =============================================================================
-# MAIN HYBRID CLASSIFIER
-# =============================================================================
+# Simple in-memory cache (use Redis in production)
+_classification_cache = {}
 
 def classify_query_hybrid(query: str) -> dict:
     """
-    Hybrid classification: LLM-first for accuracy, with rule-based fallback.
-    
-    LLM classification is cheap (~$0.0001 per query) and much more accurate.
+    Tiered classification:
+    1. Cache check (FREE)
+    2. High-confidence patterns (FREE)
+    3. LLM fallback ($)
     """
     
-    # Always try LLM first for better accuracy
-    llm_result = _llm_classify(query)
+    q_lower = query.lower().strip()
     
+    # ========================================
+    # TIER 1: Check Cache (FREE)
+    # ========================================
+    cache_key = hashlib.md5(q_lower.encode()).hexdigest()
+    if cache_key in _classification_cache:
+        cached = _classification_cache[cache_key].copy()
+        cached["source"] = "cache"
+        return cached
+    
+    # ========================================
+    # TIER 2: High-Confidence Patterns (FREE)
+    # ========================================
+    pattern_result = _check_high_confidence_patterns(q_lower)
+    if pattern_result:
+        pattern_result["source"] = "pattern"
+        _classification_cache[cache_key] = pattern_result  # Cache it
+        return pattern_result
+    
+    # ========================================
+    # TIER 3: LLM Classification ($)
+    # ========================================
+    llm_result = _llm_classify(query)
     if llm_result and llm_result.get("success"):
+        llm_result["source"] = "llm"
+        _classification_cache[cache_key] = llm_result  # Cache it
         return llm_result
     
-    # Fallback to rule-based if LLM fails
+    # ========================================
+    # FALLBACK: Rule-based
+    # ========================================
     return _rule_based_fallback(query)
+
+
+def _check_high_confidence_patterns(q: str) -> dict:
+    """
+    Check for simple, unambiguous patterns.
+    Only return if we're 100% confident.
+    """
+    import re
+    
+    # Pattern: "how many cities in [STATE]"
+    match = re.match(r"how many cities (?:are )?(?:in |are in )(.+?)(?:\?|$)", q)
+    if match:
+        state = match.group(1).strip().rstrip("?.,!")
+        return {
+            "success": True,
+            "query_type": "aggregate",
+            "original_mode": "sql",
+            "states": [state.title()],
+            "cities": [],
+            "metric": "count",
+            "is_city_related": True,
+            "response_type": "aggregate"
+        }
+    
+    # Pattern: "compare [CITY] and [CITY]"
+    match = re.match(r"compare (.+?) (?:and|vs|versus) (.+?)(?:\?|$)", q)
+    if match:
+        city1 = match.group(1).strip().rstrip("?.,!")
+        city2 = match.group(2).strip().rstrip("?.,!")
+        return {
+            "success": True,
+            "query_type": "comparison",
+            "original_mode": "ml_compare_cities",
+            "cities": [city1.title(), city2.title()],
+            "states": [],
+            "is_city_related": True,
+            "response_type": "comparison"
+        }
+    
+    # Pattern: "life in [CITY]" or "living in [CITY]"
+    match = re.match(r"(?:life|living) in (.+?)(?:\?|$)", q)
+    if match:
+        city = match.group(1).strip().rstrip("?.,!")
+        return {
+            "success": True,
+            "query_type": "lifestyle",
+            "original_mode": "lifestyle",
+            "cities": [city.title()],
+            "states": [],
+            "is_city_related": True,
+            "response_type": "lifestyle"
+        }
+    
+    # Pattern: "best city for families" (exact ML intents)
+    if "best" in q:
+        if any(w in q for w in ["family", "families", "kids", "children"]):
+            return {
+                "success": True,
+                "query_type": "ranking",
+                "original_mode": "ml_family",
+                "intent": "families",
+                "cities": [],
+                "states": [],
+                "is_city_related": True,
+                "response_type": "ranking"
+            }
+        if any(w in q for w in ["retire", "retirement", "senior", "seniors"]):
+            return {
+                "success": True,
+                "query_type": "ranking",
+                "original_mode": "ml_retirement",
+                "intent": "retirement",
+                "cities": [],
+                "states": [],
+                "is_city_related": True,
+                "response_type": "ranking"
+            }
+        if any(w in q for w in ["young professional", "young professionals"]):
+            return {
+                "success": True,
+                "query_type": "ranking",
+                "original_mode": "ml_young",
+                "intent": "young_professionals",
+                "cities": [],
+                "states": [],
+                "is_city_related": True,
+                "response_type": "ranking"
+            }
+    
+    # No high-confidence pattern found
+    return None
 
 
 def _llm_classify(query: str) -> dict:
     """Use LLM to understand query intent accurately."""
     try:
-        import streamlit as st
         from openai import OpenAI
-        import json
         
         client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
         
@@ -94,8 +163,7 @@ Analyze the user's query and return JSON:
     "direction": "highest" | "lowest" | null,
     "limit": number or null,
     "intent": "families" | "young_professionals" | "retirement" | "general",
-    "is_city_related": true | false,
-    "response_type": "single_city" | "single_state" | "city_list" | "superlative" | "comparison" | "ranking" | "aggregate" | "lifestyle"
+    "is_city_related": true | false
 }
 
 Examples:
@@ -106,6 +174,7 @@ Examples:
 - "Compare Miami and Austin" → query_type: "comparison", cities: ["Miami", "Austin"]
 - "How many cities are in Texas?" → query_type: "aggregate", states: ["Texas"]
 - "Population of California" → query_type: "single_state", states: ["California"], metric: "population"
+- "Best city for adults" → query_type: "ranking", intent: "young_professionals"
 """
             }, {
                 "role": "user",
@@ -118,8 +187,7 @@ Examples:
         
         result = json.loads(response.choices[0].message.content)
         result["success"] = True
-        result["source"] = "llm"
-        result["original_mode"] = _map_query_type_to_mode(result.get("query_type", "city_list"))
+        result["original_mode"] = _map_query_type_to_mode(result.get("query_type", "city_list"), result.get("intent"))
         
         return result
         
@@ -128,15 +196,22 @@ Examples:
         return None
 
 
-def _map_query_type_to_mode(query_type: str) -> str:
+def _map_query_type_to_mode(query_type: str, intent: str = None) -> str:
     """Map LLM query_type to internal mode."""
+    if query_type == "ranking":
+        intent_map = {
+            "families": "ml_family",
+            "young_professionals": "ml_young",
+            "retirement": "ml_retirement"
+        }
+        return intent_map.get(intent, "sql")
+    
     mapping = {
         "single_city": "single_city",
         "single_state": "single_state",
         "city_list": "sql",
         "superlative": "superlative",
         "comparison": "ml_compare_cities",
-        "ranking": "ranking",
         "aggregate": "sql",
         "lifestyle": "lifestyle",
     }
@@ -144,7 +219,7 @@ def _map_query_type_to_mode(query_type: str) -> str:
 
 
 def _rule_based_fallback(query: str) -> dict:
-    """Fallback to rule-based classification if LLM fails."""
+    """Fallback to rule-based classification if everything else fails."""
     try:
         from core.intent_classifier import classify_query_intent
         mode, state = classify_query_intent(query)
@@ -163,7 +238,7 @@ def _rule_based_fallback(query: str) -> dict:
             "is_city_related": True,
             "response_type": "city_list"
         }
-    except Exception as e:
+    except Exception:
         return {
             "success": True,
             "source": "fallback",
@@ -183,207 +258,5 @@ def is_city_related_query(query: str) -> bool:
         "retire", "retirement", "young", "professional"
     ]
     
-    us_states = [
-        "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
-        "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
-        "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana",
-        "maine", "maryland", "massachusetts", "michigan", "minnesota",
-        "mississippi", "missouri", "montana", "nebraska", "nevada",
-        "new hampshire", "new jersey", "new mexico", "new york",
-        "north carolina", "north dakota", "ohio", "oklahoma", "oregon",
-        "pennsylvania", "rhode island", "south carolina", "south dakota",
-        "tennessee", "texas", "utah", "vermont", "virginia", "washington",
-        "west virginia", "wisconsin", "wyoming"
-    ]
-    
     q_lower = query.lower()
-    
-    if any(kw in q_lower for kw in city_keywords):
-        return True
-    if any(state in q_lower for state in us_states):
-        return True
-    
-    return False
-
-# =============================================================================
-# CONFIDENCE CHECKER
-# =============================================================================
-
-def _check_confidence(query: str, mode: str) -> str:
-    """
-    Determine confidence level of rule-based classification.
-    
-    Returns: "high", "medium", or "low"
-    """
-    q = query.lower()
-    
-    # IMPORTANT: "best" queries should be ML ranking, not semantic/sql
-    # If rule-based didn't detect ML mode for "best" query, use LLM
-    if "best" in q and mode not in ["ml_family", "ml_young", "ml_retirement"]:
-        return "low"  # Force LLM fallback
-    
-    # Check if query matches confidence patterns for detected mode
-    if mode in CONFIDENCE_PATTERNS:
-        patterns = CONFIDENCE_PATTERNS[mode]
-        if any(p in q for p in patterns):
-            return "high"
-
-# =============================================================================
-# BUILD RULE-BASED RESULT
-# =============================================================================
-
-def _build_rule_based_result(query: str, mode: str, state_filter: str, confidence: str) -> dict:
-    """
-    Build standardized result from rule-based classification.
-    """
-    q = query.lower()
-    
-    # Map your mode names to response_type
-    mode_mapping = {
-        "sql": "sql_query",
-        "semantic": "semantic_search",
-        "hybrid": "hybrid_search",
-        "ml_family": "recommendation",
-        "ml_young": "recommendation",
-        "ml_retirement": "recommendation",
-        "ml_compare_cities": "comparison",
-        "ml_single_city": "single_city_score",
-    }
-    
-    response_type = mode_mapping.get(mode, mode)
-    
-    # Detect metric from query
-    metric = _extract_metric(q)
-    
-    # Detect specific intent for recommendations
-    specific_intent = _extract_specific_intent(mode)
-    
-    return {
-        "response_type": response_type,
-        "original_mode": mode,  # Keep original mode for routing
-        "state_filter": state_filter,
-        "mentioned_cities": [],  # Rule-based doesn't extract cities well
-        "mentioned_states": [state_filter] if state_filter else [],
-        "metric": metric,
-        "specific_intent": specific_intent,
-        "is_city_related": True,  # Rule-based assumes city queries
-        "can_answer_from_db": True,
-        "use_gpt_knowledge": False,
-        "source": "rule_based",
-        "confidence": confidence,
-    }
-
-
-def _extract_metric(query: str) -> str:
-    """Extract metric from query."""
-    q = query.lower()
-    
-    if "population" in q:
-        return "population"
-    elif "median age" in q or "age" in q:
-        return "median_age"
-    elif "household" in q:
-        return "avg_household_size"
-    else:
-        return "all"
-
-
-def _extract_specific_intent(mode: str) -> str:
-    """Extract specific intent from mode."""
-    if mode == "ml_family":
-        return "families"
-    elif mode == "ml_young":
-        return "young_professionals"
-    elif mode == "ml_retirement":
-        return "retirement"
-    else:
-        return "general"
-
-
-# =============================================================================
-# LLM FALLBACK
-# =============================================================================
-
-def _llm_fallback(query: str) -> dict:
-    """
-    Fallback to LLM classifier when rule-based is unsure.
-    """
-    # Get LLM classification
-    llm_result = classify_query_with_llm(query)
-    
-    # Add source info
-    llm_result["source"] = "llm"
-    llm_result["confidence"] = "high"  # LLM is generally confident
-    
-    # Check if it's a city-related query that we can't answer from DB
-    if llm_result.get("is_city_related", True) and not llm_result.get("can_answer_from_db", True):
-        llm_result["use_gpt_knowledge"] = True
-    else:
-        llm_result["use_gpt_knowledge"] = False
-    
-    return llm_result
-
-
-# =============================================================================
-# HELPER: CHECK IF QUERY IS CITY-RELATED
-# =============================================================================
-
-def is_city_related_query(query: str) -> bool:
-    """
-    Check if query is related to cities/states/USA.
-    Used to determine if we should use GPT knowledge or show out-of-scope.
-    """
-    q = query.lower()
-    
-    # City-related keywords
-    city_keywords = [
-        "city", "cities", "town", "towns", "metro", "metropolitan",
-        "state", "states", "usa", "america", "american", "us",
-        "population", "median age", "household", "living", "life in",
-        "move to", "relocate", "best place", "where to live",
-        "county", "region", "area"
-    ]
-    
-    # State names (check if any US state is mentioned)
-    us_states = [
-        "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
-        "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
-        "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana",
-        "maine", "maryland", "massachusetts", "michigan", "minnesota",
-        "mississippi", "missouri", "montana", "nebraska", "nevada",
-        "new hampshire", "new jersey", "new mexico", "new york",
-        "north carolina", "north dakota", "ohio", "oklahoma", "oregon",
-        "pennsylvania", "rhode island", "south carolina", "south dakota",
-        "tennessee", "texas", "utah", "vermont", "virginia", "washington",
-        "west virginia", "wisconsin", "wyoming"
-    ]
-    
-    # Check for keywords
-    if any(kw in q for kw in city_keywords):
-        return True
-    
-    # Check for state names
-    if any(state in q for state in us_states):
-        return True
-    
-    return False
-
-
-# =============================================================================
-# QUICK TEST
-# =============================================================================
-
-if __name__ == "__main__":
-    test_queries = [
-        "population of Dallas",  # Should be SQL, high confidence
-        "best cities for families in Texas",  # Should be ml_family, high
-        "life in Miami",  # Should be semantic, high
-        "compare Austin and Denver",  # Should be compare, high
-        "what's the weather like",  # Should fallback to LLM, low confidence
-        "tell me about pizza",  # Not city-related, out of scope
-    ]
-    
-    for q in test_queries:
-        result = classify_query_hybrid(q)
-        print(f"\nQuery: {q}")
-        print(f"  Mode: {result.get('response_type')} | Source: {result.get('source')} | Confidence: {result.get('confidence')}")
+    return any(kw in q_lower for kw in city_keywords)
