@@ -31,7 +31,7 @@ st.set_page_config(
 from config import APP_TITLE, APP_SUBTITLE, QUICK_EXAMPLES
 from styles import get_custom_css
 from utils import correct_query_spelling, is_nonsense_query, is_world_query
-from hybrid_classifier import classify_query_hybrid  # NEW: Hybrid classification
+from smart_classifier import smart_classify, get_classification_summary
 from query_handlers import handle_query
 from mlops_dashboard import render_mlops_dashboard
 
@@ -237,7 +237,9 @@ if mode == "Search":
         # STEP 3: Hybrid Classification (Rule-based first, LLM fallback)
         # -------------------------------------------------
         with st.spinner("Understanding your question..."):
-            classification = classify_query_hybrid(query)
+            classification = smart_classify(query)
+            # Show classification info (optional - for debugging)
+            st.caption(f"🧠 {get_classification_summary(classification)}")
         
         # Show classification source (for debugging - can be removed)
         source = classification.get("source", "unknown")
