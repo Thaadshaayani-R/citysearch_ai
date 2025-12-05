@@ -149,12 +149,12 @@ FORBIDDEN_WORLD_KEYWORDS = [
 # QUICK EXAMPLES FOR SIDEBAR
 # -------------------------------------------------
 QUICK_EXAMPLES = [
-    "cities with population > 1000000",
-    "how many cities are in Texas",
-    "top 10 largest cities in Florida",
+    "Total population of California",
+    "How many cities are in Texas",
+    "Top 10 largest cities in Florida",
     "Which is best city for families",
-    "best cities for young professionals",
-    "best retirement city",
+    "Best cities for young professionals",
+    "Best retirement city",
     "Life in Dallas",
     "City profile for Denver",
     "Cities similar to Chicago",
