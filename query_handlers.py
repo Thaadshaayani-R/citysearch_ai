@@ -7,7 +7,6 @@ Routes classified queries to appropriate core modules and display components.
 import streamlit as st
 import pandas as pd
 from sqlalchemy import text
-from typing import Optional, List, Dict, Any
 
 from config import DB_TABLE_NAME
 from db_config import get_engine
@@ -95,27 +94,30 @@ from utils import (
 
 def handle_query(query, classification, df_features, get_engine_func=None, 
                  smart_route_func=None, lifestyle_rag_func=None, classify_intent_func=None):
-    """Main query handler using smart classification."""
+    """Main query handler using LLM classification."""
     if get_engine_func is None:
         get_engine_func = get_engine
     
     city_list = df_features["city"].unique().tolist() if not df_features.empty else []
     
-    # Extract classification details
+    # Check if city-related
+    if not classification.get("is_city_related", True):
+        show_out_of_scope()
+        return
+    
+    # Get classification details from LLM
     query_type = classification.get("query_type", "city_list")
-    entities = classification.get("entities", {})
-    cities = entities.get("cities", [])
-    states = entities.get("states", [])
     metric = classification.get("metric")
     direction = classification.get("direction")
     limit = classification.get("limit", 10) or 10
+    cities = classification.get("cities", [])
+    states = classification.get("states", [])
     intent = classification.get("intent", "general")
-    filter_info = classification.get("filter", {})
     
     try:
-        # Route based on verified query type
+        # Route based on LLM-detected query type
         if query_type == "single_city":
-            city_name = cities[0] if cities else _extract_city_from_query(query, city_list)
+            city_name = cities[0] if cities else None
             if city_name:
                 handle_single_city_query(query, city_name, df_features, get_engine_func, metric)
             else:
@@ -123,10 +125,12 @@ def handle_query(query, classification, df_features, get_engine_func=None,
         
         elif query_type == "single_state":
             state_name = states[0] if states else None
-            if state_name:
+            if state_name and metric == "population":
                 handle_state_population_query(query, state_name, get_engine_func)
-            else:
+            elif state_name:
                 handle_single_state(query, classification, df_features, get_engine_func, city_list)
+            else:
+                handle_sql_query(query, classification, df_features, get_engine_func, city_list)
         
         elif query_type == "superlative":
             handle_superlative_query(query, metric or "population", direction or "highest", get_engine_func, limit)
@@ -135,54 +139,33 @@ def handle_query(query, classification, df_features, get_engine_func=None,
             handle_comparison(query, classification, df_features, get_engine_func, city_list)
         
         elif query_type == "ranking":
-            intent_map = {
-                "families": "families",
-                "young_professionals": "young_professionals",
-                "retirement": "retirement"
-            }
-            ml_intent = intent_map.get(intent, "families")
-            handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, ml_intent)
+            # Map intent to ML ranking
+            if intent == "families":
+                handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "families")
+            elif intent == "young_professionals":
+                handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "young_professionals")
+            elif intent == "retirement":
+                handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "retirement")
+            else:
+                handle_sql_query(query, classification, df_features, get_engine_func, city_list)
         
         elif query_type == "aggregate":
             handle_sql_query(query, classification, df_features, get_engine_func, city_list)
         
         elif query_type == "lifestyle":
-            city_name = cities[0] if cities else _extract_city_from_query(query, city_list)
+            city_name = cities[0] if cities else None
             if city_name:
                 handle_lifestyle_query(query, city_name, classification, df_features, get_engine_func, city_list)
             else:
                 handle_sql_query(query, classification, df_features, get_engine_func, city_list)
         
-        elif query_type == "filtered_list":
-            handle_filtered_list(query, classification, df_features, get_engine_func, filter_info, limit)
-        
         else:
+            # Default to SQL query
             handle_sql_query(query, classification, df_features, get_engine_func, city_list)
     
     except Exception as e:
         st.error(f"Error processing query: {str(e)}")
         _show_fallback_data(df_features)
-
-def _extract_city_from_query(query: str, city_list: list) -> Optional[str]:
-    """Extract city name from query using fuzzy matching."""
-    import re
-    
-    # Common patterns
-    patterns = [
-        r"(?:population of|about|in|for)\s+([a-zA-Z\s]+?)(?:\?|$|,)",
-        r"life in\s+([a-zA-Z\s]+?)(?:\?|$)",
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, query.lower())
-        if match:
-            potential_city = match.group(1).strip()
-            matched, score = fuzzy_match_city(potential_city, city_list)
-            if matched and score > 70:
-                return matched
-    
-    return None
-
 
 
 def handle_sql_query(query, classification, df_features, get_engine_func, city_list):
