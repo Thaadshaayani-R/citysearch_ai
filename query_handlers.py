@@ -1,32 +1,82 @@
 """
-CitySearch AI - Query Handlers (Refactored Option 2: LLM + Light Fallback)
-==========================================================================
-
-Cleaner router, no over-detection, no unnecessary rule-based blocking,
-LLM classification is always respected FIRST, then light validation fixes gaps.
+CitySearch AI - Query Handlers
+===============================
+Routes classified queries to appropriate core modules and display components.
 """
 
 import streamlit as st
 import pandas as pd
 from sqlalchemy import text
-from typing import Optional
 
 from config import DB_TABLE_NAME
 from db_config import get_engine
 
-# -----------------------
-#  IMPORT HELPERS
-# -----------------------
-from utils import (
-    extract_single_city_fuzzy,
-    extract_single_state_fuzzy,
-    extract_two_cities_fuzzy,
-    extract_two_states_fuzzy,
-    fuzzy_match_city,
-    fuzzy_match_state,
-)
+# Safe imports with fallbacks
+try:
+    from core.intent_classifier import classify_query_intent
+except ImportError:
+    classify_query_intent = None
 
-# Your existing UI components (DO NOT MODIFY)
+try:
+    from core.semantic_search import semantic_city_search
+except ImportError:
+    semantic_city_search = None
+
+try:
+    from core.lifestyle_rag_v2 import try_build_lifestyle_card
+except ImportError:
+    try_build_lifestyle_card = None
+
+try:
+    from core.ml_router import run_family_ranking, run_young_ranking, run_retirement_ranking
+except ImportError:
+    run_family_ranking = None
+    run_young_ranking = None
+    run_retirement_ranking = None
+
+try:
+    from core.ml_explain import explain_ml_results
+except ImportError:
+    explain_ml_results = None
+
+try:
+    from core.score_translate import to_level
+except ImportError:
+    def to_level(score):
+        if score is None: return "Unknown"
+        try: score = float(score)
+        except: return "Unknown"
+        if score < 5: return "Low"
+        elif score < 15: return "Medium"
+        elif score < 25: return "High"
+        return "Excellent"
+
+try:
+    from core.query_router import build_sql_with_fallback
+except ImportError:
+    build_sql_with_fallback = None
+
+try:
+    from core.cluster_router import get_cluster_for_city, get_all_clusters
+except ImportError:
+    get_cluster_for_city = None
+    get_all_clusters = None
+
+try:
+    from core.cluster_explain import explain_cluster
+except ImportError:
+    explain_cluster = None
+
+try:
+    from core.cluster_labels import CLUSTER_LABELS
+except ImportError:
+    CLUSTER_LABELS = {}
+
+try:
+    from core.rag_search import search_city_rag
+except ImportError:
+    search_city_rag = None
+
 from display_components import (
     show_city_profile_card, show_single_metric_card, show_state_metric_card,
     show_aggregate_card, show_superlative_card, show_city_comparison,
@@ -35,506 +85,925 @@ from display_components import (
     generate_ai_summary
 )
 
-# ML handlers kept as-is
-from core.ml_router import (
-    run_family_ranking, run_young_ranking, run_retirement_ranking
+from utils import (
+    extract_single_city_fuzzy, extract_two_cities_fuzzy,
+    extract_single_state_fuzzy, extract_two_states_fuzzy,
+    fuzzy_match_city, fuzzy_match_state, format_population
 )
 
-from core.query_router import build_sql_with_fallback
-from core.semantic_search import semantic_city_search
-from core.lifestyle_rag_v2 import try_build_lifestyle_card
 
-from core.cluster_router import (
-    cluster_all,
-    cluster_by_state,
-    cluster_single_city,
-    cluster_similar_to
-)
-
-from core.cluster_explain import explain_cluster
-from core.cluster_labels import CLUSTER_LABELS
-from core.ml_explain import explain_ml_results
-
-
-# ============================================================================
-#  ✨ 1. LIGHTWEIGHT VALIDATION HELPERS
-# ============================================================================
-
-def detect_metric_fallback(query: str) -> Optional[str]:
-    """Fallback metric extraction if classifier misses it."""
-    q = query.lower()
-
-    if "population" in q or "people" in q:
-        return "population"
-
-    if "median age" in q or "age" in q:
-        return "median_age"
-
-    if "household" in q or "family size" in q:
-        return "avg_household_size"
-
-    return None
-
-
-def fallback_city(query: str, city_list: list) -> Optional[str]:
-    """If classifier gave no cities, try fuzzy extract."""
-    if not city_list:
-        return None
-
-    # simple fuzzy search
-    city, score = extract_single_city_fuzzy(query, city_list)
-    return city if city else None
-
-
-def fallback_state(query: str) -> Optional[str]:
-    """If classifier gave no states, use fuzzy."""
-    state = extract_single_state_fuzzy(query)
-    return state if state else None
-
-
-# ============================================================================
-#  ✨ 2. CLEAN CENTRAL ROUTER (OPTION 2)
-# ============================================================================
-
-def handle_query(
-    query: str,
-    classification: dict,
-    df_features: pd.DataFrame,
-    get_engine_func=None,
-    smart_route_func=None,
-    lifestyle_rag_func=None,
-    classify_intent_func=None,
-):
-    """
-    Clean router. LLM classifier is ALWAYS primary.
-    Fallback logic only fills missing values, never overrides LLM intent.
-    """
-
+def handle_query(query, classification, df_features, get_engine_func=None, 
+                 smart_route_func=None, lifestyle_rag_func=None, classify_intent_func=None):
+    """Main query handler using smart classification."""
     if get_engine_func is None:
         get_engine_func = get_engine
-
+    
     city_list = df_features["city"].unique().tolist() if not df_features.empty else []
-
-    # -----------------------
-    # Unpack classification
-    # -----------------------
-    query_type = classification.get("query_type")
+    
+    # Extract classification details
+    query_type = classification.get("query_type", "city_list")
     entities = classification.get("entities", {})
     cities = entities.get("cities", [])
     states = entities.get("states", [])
     metric = classification.get("metric")
     direction = classification.get("direction")
-    limit = classification.get("limit", 10)
-    intent = classification.get("intent")
+    limit = classification.get("limit", 10) or 10
+    intent = classification.get("intent", "general")
     filter_info = classification.get("filter", {})
-
-    # -----------------------
-    # LIGHT FALLBACKS (FILL ONLY MISSING VALUES)
-    # -----------------------
-    if not cities:
-        fc = fallback_city(query, city_list)
-        if fc:
-            cities = [fc]
-
-    if not states:
-        fs = fallback_state(query)
-        if fs:
-            states = [fs]
-
-    if not metric:
-        metric = detect_metric_fallback(query)
-
-    # -----------------------
-    # BEGIN ROUTING
-    # -----------------------
+    
     try:
-
-        # 1) SINGLE CITY
+        # Route based on verified query type
         if query_type == "single_city":
-            if cities:
-                return handle_single_city_router(query, cities[0], df_features, get_engine_func)
-            return st.warning("Could not detect city.")
-
-        # 2) SINGLE STATE
-        if query_type == "single_state":
-            if states:
-                return handle_state_router(query, states[0], get_engine_func)
-            return st.warning("Could not detect state.")
-
-        # 3) SUPERLATIVE
-        if query_type == "superlative":
-            return handle_superlative_router(
-                query, metric or "population", direction or "highest", get_engine_func, limit
-            )
-
-        # 4) COMPARISON (city vs city or state vs state)
-        if query_type == "comparison":
-            return handle_comparison_router(query, classification, df_features, get_engine_func, city_list)
-
-        # 5) ML RANKING (best for families / young / retirement)
-        if query_type == "ranking":
-            return handle_ml_ranking_router(query, classification, df_features, get_engine_func)
-
-        # 6) LIFESTYLE QUERIES (“life in X”)
-        if query_type == "lifestyle":
-            if cities:
-                return handle_lifestyle_router(query, cities[0], df_features, get_engine_func)
-            return st.warning("City not detected for lifestyle.")
-
-        # 7) FILTERED LIST (“cities in CA with population > 1M”)
-        if query_type == "filtered_list":
-            return handle_filtered_list_router(query, classification, df_features, get_engine_func, filter_info, limit)
-
-        # 8) AGGREGATE (“how many cities in Texas?”)
-        if query_type == "aggregate":
-            return handle_aggregate_router(query, classification, df_features, get_engine_func)
-
-        # 9) FALLBACK → SQL or semantic
-        return handle_sql_router(query, classification, df_features, get_engine_func, city_list)
-
+            city_name = cities[0] if cities else _extract_city_from_query(query, city_list)
+            if city_name:
+                handle_single_city_query(query, city_name, df_features, get_engine_func, metric)
+            else:
+                handle_sql_query(query, classification, df_features, get_engine_func, city_list)
+        
+        elif query_type == "single_state":
+            state_name = states[0] if states else None
+            if state_name:
+                handle_state_population_query(query, state_name, get_engine_func)
+            else:
+                handle_single_state(query, classification, df_features, get_engine_func, city_list)
+        
+        elif query_type == "superlative":
+            handle_superlative_query(query, metric or "population", direction or "highest", get_engine_func, limit)
+        
+        elif query_type == "comparison":
+            handle_comparison(query, classification, df_features, get_engine_func, city_list)
+        
+        elif query_type == "ranking":
+            intent_map = {
+                "families": "families",
+                "young_professionals": "young_professionals",
+                "retirement": "retirement"
+            }
+            ml_intent = intent_map.get(intent, "families")
+            handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, ml_intent)
+        
+        elif query_type == "aggregate":
+            handle_sql_query(query, classification, df_features, get_engine_func, city_list)
+        
+        elif query_type == "lifestyle":
+            city_name = cities[0] if cities else _extract_city_from_query(query, city_list)
+            if city_name:
+                handle_lifestyle_query(query, city_name, classification, df_features, get_engine_func, city_list)
+            else:
+                handle_sql_query(query, classification, df_features, get_engine_func, city_list)
+        
+        elif query_type == "filtered_list":
+            handle_filtered_list(query, classification, df_features, get_engine_func, filter_info, limit)
+        
+        else:
+            handle_sql_query(query, classification, df_features, get_engine_func, city_list)
+    
     except Exception as e:
-        st.error(f"Query error: {str(e)}")
-        st.write("Showing fallback sample data:")
-        if not df_features.empty:
-            show_city_table(df_features.head(10), "Sample Cities", True)
+        st.error(f"Error processing query: {str(e)}")
+        _show_fallback_data(df_features)
 
-# ============================================================================
-#  ✨ SQL BUILDER (Unified)
-# ============================================================================
-
-def run_sql(engine, sql, params=None):
-    """Safe SQL wrapper."""
-    with engine.connect() as conn:
-        result = conn.execute(text(sql), params or {})
-        rows = result.fetchall()
-        cols = result.keys()
-    return pd.DataFrame(rows, columns=cols)
-
-
-def build_basic_query(metric="population", direction="DESC", limit=10, state=None):
-    """Universal SQL builder for superlatives, listing, basic queries."""
+def _extract_city_from_query(query: str, city_list: list) -> Optional[str]:
+    """Extract city name from query using fuzzy matching."""
+    import re
     
-    base = f"SELECT TOP {limit} * FROM {DB_TABLE_NAME}"
+    # Common patterns
+    patterns = [
+        r"(?:population of|about|in|for)\s+([a-zA-Z\s]+?)(?:\?|$|,)",
+        r"life in\s+([a-zA-Z\s]+?)(?:\?|$)",
+    ]
     
-    if state:
-        base += " WHERE LOWER(state) = LOWER(:state)"
-
-    order = f" ORDER BY {metric} {direction}"
-    return base + order
-
-# ============================================================================
-#  ✨ SINGLE CITY
-# ============================================================================
-
-def handle_single_city_router(query, city_name, df_features, get_engine_func):
-    engine = get_engine_func()
-
-    # Query exact city
-    sql = f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city)=LOWER(:c)"
-    df = run_sql(engine, sql, {"c": city_name})
-
-    # Fuzzy fallback
-    if df.empty:
-        city_list = df_features["city"].tolist()
-        match, score = fuzzy_match_city(city_name, city_list)
-        if score > 70:
-            df = run_sql(engine, sql, {"c": match})
-
-    if df.empty:
-        st.warning(f"City '{city_name}' not found.")
-        return
-
-    row = df.iloc[0]
-    show_city_profile_card(row["city"], row["state"], row)
-
-# ============================================================================
-#  ✨ SINGLE STATE
-# ============================================================================
-
-def handle_state_router(query, state_name, get_engine_func):
-    engine = get_engine_func()
-
-    sql = f"""
-        SELECT 
-            state,
-            COUNT(*) AS city_count,
-            SUM(population) AS total_population,
-            AVG(median_age) AS avg_median_age,
-            AVG(avg_household_size) AS avg_household_size
-        FROM {DB_TABLE_NAME}
-        WHERE LOWER(state)=LOWER(:state)
-        GROUP BY state
-    """
-
-    df = run_sql(engine, sql, {"state": state_name})
-    if df.empty:
-        st.warning(f"State '{state_name}' not found.")
-        return
-
-    row = df.iloc[0]
-    total_pop = int(row["total_population"])
-    city_count = int(row["city_count"])
-
-    show_state_metric_card(
-        state_name,
-        "Population",
-        total_pop,
-        city_count,
-        None  # you may add top cities
-    )
-
-# ============================================================================
-#  ✨ SINGLE STATE
-# ============================================================================
-
-def handle_state_router(query, state_name, get_engine_func):
-    engine = get_engine_func()
-
-    sql = f"""
-        SELECT 
-            state,
-            COUNT(*) AS city_count,
-            SUM(population) AS total_population,
-            AVG(median_age) AS avg_median_age,
-            AVG(avg_household_size) AS avg_household_size
-        FROM {DB_TABLE_NAME}
-        WHERE LOWER(state)=LOWER(:state)
-        GROUP BY state
-    """
-
-    df = run_sql(engine, sql, {"state": state_name})
-    if df.empty:
-        st.warning(f"State '{state_name}' not found.")
-        return
-
-    row = df.iloc[0]
-    total_pop = int(row["total_population"])
-    city_count = int(row["city_count"])
-
-    show_state_metric_card(
-        state_name,
-        "Population",
-        total_pop,
-        city_count,
-        None  # you may add top cities
-    )
-
-# ============================================================================
-#  ✨ SUPERLATIVE
-# ============================================================================
-
-def handle_superlative_router(query, metric, direction, get_engine_func, limit):
-    engine = get_engine_func()
-
-    direction_sql = "DESC" if direction == "highest" else "ASC"
-    metric_sql = metric
-
-    sql = build_basic_query(metric_sql, direction_sql, limit)
-    df = run_sql(engine, sql)
-
-    if df.empty:
-        st.warning("No results found.")
-        return
-
-    top = df.iloc[0]
-    runners = df.iloc[1:5]
-
-    label = f"{direction.capitalize()} {metric.replace('_',' ').title()}"
-    show_superlative_card(
-        top["city"], top["state"], top[metric_sql], label, runners, None
-    )
-
-# ============================================================================
-#  ✨ AGGREGATE
-# ============================================================================
-
-def handle_aggregate_router(query, classification, df_features, get_engine_func):
-    engine = get_engine_func()
-    state = classification["entities"].get("states", [None])[0]
-
-    if state:
-        sql = f"SELECT COUNT(*) AS count FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s)"
-        df = run_sql(engine, sql, {"s": state})
-        show_aggregate_card(f"Cities in {state}", df.iloc[0]["count"], "cities")
-    else:
-        sql = f"SELECT COUNT(*) AS count FROM {DB_TABLE_NAME}"
-        df = run_sql(engine, sql)
-        show_aggregate_card("Total Cities", df.iloc[0]["count"], "cities")
+    for pattern in patterns:
+        match = re.search(pattern, query.lower())
+        if match:
+            potential_city = match.group(1).strip()
+            matched, score = fuzzy_match_city(potential_city, city_list)
+            if matched and score > 70:
+                return matched
+    
+    return None
 
 
-# ============================================================================
-#  ✨ COMPARISON
-# ============================================================================
 
-def handle_comparison_router(query, classification, df_features, get_engine_func, city_list):
-    engine = get_engine_func()
-
-    # CITY vs CITY
-    if classification.get("comparison_type") == "city_vs_city":
-        cities = classification["entities"].get("cities", [])
-
-        # fallback fuzzy
-        if len(cities) < 2:
-            c1, c2 = extract_two_cities_fuzzy(query, city_list)
-            cities = [c1, c2]
-
-        sql = f"""
-            SELECT * FROM {DB_TABLE_NAME}
-            WHERE LOWER(city) IN (LOWER(:c1), LOWER(:c2))
-        """
-
-        df = run_sql(engine, sql, {"c1": cities[0], "c2": cities[1]})
-        if len(df) == 2:
-            r1 = df.iloc[0]
-            r2 = df.iloc[1]
-            return show_city_comparison(r1, r2, query)
-
-        st.warning("Could not compare cities.")
-        return
-
-    # STATE vs STATE
-    states = classification["entities"].get("states", [])
-    if len(states) < 2:
-        s1, s2 = extract_two_states_fuzzy(query)
-        states = [s1, s2]
-
-    sql = f"""
-        SELECT state, COUNT(*) AS cnt, SUM(population) AS pop, AVG(median_age) AS age
-        FROM {DB_TABLE_NAME}
-        WHERE LOWER(state) IN (LOWER(:s1), LOWER(:s2))
-        GROUP BY state
-    """
-
-    df = run_sql(engine, sql, {"s1": states[0], "s2": states[1]})
-    if len(df) == 2:
-        show_state_comparison(states[0], df.iloc[0], states[1], df.iloc[1], query)
-    else:
-        st.warning("Could not compare states.")
-
-# ============================================================================
-#  ✨ ML RANKING
-# ============================================================================
-
-def handle_ml_ranking_router(query, classification, df_features, get_engine_func):
-    intent = classification.get("intent")
-
-    func_map = {
-        "families": run_family_ranking,
-        "young_professionals": run_young_ranking,
-        "retirement": run_retirement_ranking,
-    }
-
-    func = func_map.get(intent)
-    if not func:
-        st.warning("Ranking intent missing.")
-        return
-
+def handle_sql_query(query, classification, df_features, get_engine_func, city_list):
+    """Handle SQL queries."""
     try:
-        df = func()  # call ML function normally
-    except:
-        st.warning("ML failed; using fallback ranking.")
-        df = df_features.copy()
-        df["score"] = df["population"] / 10000
-        df = df.sort_values("score", ascending=False).head(10)
+        engine = get_engine_func()
+        df = _build_basic_sql(query, classification, engine)
+        
+        if df is None or df.empty:
+            st.warning("No results found.")
+            _show_fallback_data(df_features)
+            return
+        
+        _display_sql_results(query, classification, df)
+    except Exception as e:
+        st.error(f"Database error: {str(e)}")
+        _show_fallback_data(df_features)
 
-    show_recommendation_card(df.iloc[0], intent, df, query)
-    if explain_ml_results:
-        insights = explain_ml_results(query, df)
-        if insights:
-            st.markdown("### Why These Cities?")
-            st.markdown(insights)
 
-    show_city_table(df, "Ranking Results", True)
+def _build_basic_sql(query, classification, engine):
+    """Build SQL from classification."""
+    q = query.lower()
+    state_filter = classification.get("state_filter") or (classification.get("mentioned_states", [None])[0] if classification.get("mentioned_states") else None)
+    metric = classification.get("metric", "population")
+    sort_dir = classification.get("sort_direction")
+    limit = classification.get("limit", 10) or 10
+    
+    if "how many" in q or "count" in q:
+        if state_filter:
+            sql = text(f"SELECT COUNT(*) as count FROM {DB_TABLE_NAME} WHERE LOWER(state) = LOWER(:state)")
+            with engine.connect() as conn:
+                r = conn.execute(sql, {"state": state_filter}).fetchone()
+            return pd.DataFrame([{"count": r[0], "state": state_filter}])
+        else:
+            sql = text(f"SELECT COUNT(*) as count FROM {DB_TABLE_NAME}")
+            with engine.connect() as conn:
+                r = conn.execute(sql).fetchone()
+            return pd.DataFrame([{"count": r[0]}])
+    
+    order = "ORDER BY population DESC"
+    if sort_dir:
+        order = f"ORDER BY {metric} {'DESC' if sort_dir == 'highest' else 'ASC'}"
+    
+    # Use engine.connect() and execute with text() for parameterized queries
+    if state_filter:
+        sql = text(f"SELECT TOP {limit} * FROM {DB_TABLE_NAME} WHERE LOWER(state) = LOWER(:state) {order}")
+        with engine.connect() as conn:
+            result = conn.execute(sql, {"state": state_filter})
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+        return df
+    else:
+        sql = text(f"SELECT TOP {limit} * FROM {DB_TABLE_NAME} {order}")
+        with engine.connect() as conn:
+            result = conn.execute(sql)
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+        return df
 
-# ============================================================================
-#  ✨ LIFESTYLE
-# ============================================================================
 
-def handle_lifestyle_router(query, city, df_features, get_engine_func):
-    r = try_build_lifestyle_card(query)
+def _display_sql_results(query, classification, df):
+    """Display SQL results."""
+    if "count" in df.columns:
+        val = df["count"].iloc[0]
+        state = df.get("state", pd.Series([None])).iloc[0]
+        label = f"Cities in {state}" if state else "Total Cities"
+        show_aggregate_card(label, str(val), "cities")
+        return
+    
+    if len(df) == 1:
+        row = df.iloc[0]
+        show_city_profile_card(row.get("city", ""), row.get("state", ""), row)
+        return
+    
+    sort_dir = classification.get("sort_direction")
+    if sort_dir:
+        metric = classification.get("metric", "population")
+        top = df.iloc[0]
+        runners = df.iloc[1:4] if len(df) > 1 else pd.DataFrame()
+        label = f"{'Highest' if sort_dir == 'highest' else 'Lowest'} {metric.replace('_',' ').title()}"
+        show_superlative_card(top.get("city",""), top.get("state",""), top.get(metric,"N/A"), label, runners, None)
+        if len(df) > 4:
+            show_city_table(df, "All Results", True)
+    else:
+        show_city_table(df, "Results", True)
+
+
+def handle_semantic_search(query, classification, df_features, get_engine_func, city_list):
+    """Handle semantic search."""
+    if not semantic_city_search:
+        handle_sql_query(query, classification, df_features, get_engine_func, city_list)
+        return
+    try:
+        results = semantic_city_search(query, top_k=10, state_filter=classification.get("state_filter"))
+        if not results:
+            st.warning("No matching cities found.")
+            return
+        engine = get_engine_func()
+        data = []
+        for city, state in results:
+            sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city)=LOWER(:c) AND LOWER(state)=LOWER(:s)")
+            with engine.connect() as conn:
+                r = conn.execute(sql, {"c": city, "s": state}).fetchone()
+                if r: data.append(dict(r._mapping))
+        if data:
+            show_city_table(pd.DataFrame(data), "Semantic Results", True)
+    except Exception as e:
+        st.error(f"Semantic search error: {e}")
+
+
+def handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, intent):
+    """Handle ML ranking."""
+    state = classification.get("state_filter") or (classification.get("mentioned_states", [None])[0] if classification.get("mentioned_states") else None)
+    
+    func = None
+    if intent == "families" and run_family_ranking: func = run_family_ranking
+    elif intent == "young_professionals" and run_young_ranking: func = run_young_ranking
+    elif intent == "retirement" and run_retirement_ranking: func = run_retirement_ranking
+    
+    df = None
+    if func:
+        try:
+            # Call function without any parameters
+            df = func()
+            # Filter by state manually if needed
+            if state and df is not None and not df.empty and "state" in df.columns:
+                filtered = df[df["state"].str.lower() == state.lower()]
+                if not filtered.empty:
+                    df = filtered
+        except Exception as e:
+            st.warning(f"ML error: {e}")
+    
+    # If ML failed or returned empty, use fallback
+    if df is None or df.empty:
+        df = _fallback_ranking(df_features, intent, state)
+    
+    if df is not None and not df.empty:
+        show_recommendation_card(df.iloc[0], intent, df, query)
+        if explain_ml_results:
+            try:
+                insights = explain_ml_results(query, df)
+                if insights:
+                    st.markdown("### 🧠 Why These Cities?")
+                    st.markdown(insights)
+            except: pass
+        show_city_table(df, f"Best for {intent.replace('_',' ').title()}", True)
+    else:
+        st.warning("Could not generate rankings.")
+
+
+def _fallback_ranking(df_features, intent, state_filter=None):
+    """Fallback ranking."""
+    if df_features.empty: return None
+    df = df_features.copy()
+    if state_filter:
+        df = df[df["state"].str.lower() == state_filter.lower()]
+    if df.empty: return None
+    
+    if intent == "families":
+        df["score"] = df["avg_household_size"]*20 + (50-abs(df["median_age"]-35)) + df["population"]/100000
+    elif intent == "young_professionals":
+        df["score"] = (45-df["median_age"])*3 + df["population"]/50000
+    elif intent == "retirement":
+        df["score"] = df["median_age"]*2 + (4-df["avg_household_size"])*10
+    else:
+        df["score"] = df["population"]/10000
+    return df.sort_values("score", ascending=False).head(10)
+
+
+def handle_single_city(query, classification, df_features, get_engine_func, city_list):
+    """Handle single city."""
+    cities = classification.get("mentioned_cities", [])
+    city = cities[0] if cities else extract_single_city_fuzzy(query, city_list)[0]
+    
+    if classification.get("sort_direction") and not city:
+        _handle_superlative(query, classification, get_engine_func)
+        return
+    
+    if not city:
+        st.warning("Could not identify city.")
+        return
+    
+    engine = get_engine_func()
+    sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city)=LOWER(:c)")
+    with engine.connect() as conn:
+        r = conn.execute(sql, {"c": city}).fetchone()
+    
     if r:
-        return show_lifestyle_card(
-            r["city"], r["state"], r["population"],
-            r["median_age"], r["household_size"],
-            r["description"], r["ai_summary"]
-        )
+        d = dict(r._mapping)
+        show_city_profile_card(city, d.get("state",""), pd.Series(d))
+    else:
+        st.warning(f"City '{city}' not found.")
 
-    return handle_single_city_router(query, city, df_features, get_engine_func)
 
-# ============================================================================
-#  ✨ FILTERED LIST
-# ============================================================================
-
-def handle_filtered_list_router(query, classification, df_features, get_engine_func, filter_info, limit):
+def handle_single_state(query, classification, df_features, get_engine_func, city_list):
+    """Handle single state."""
+    states = classification.get("mentioned_states", [])
+    state = states[0] if states else extract_single_state_fuzzy(query)
+    
+    if not state:
+        st.warning("Could not identify state.")
+        return
+    
     engine = get_engine_func()
+    sql = text(f"""
+        SELECT state, COUNT(*) as city_count, SUM(population) as total_pop, AVG(median_age) as avg_age
+        FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) GROUP BY state
+    """)
+    with engine.connect() as conn:
+        r = conn.execute(sql, {"s": state}).fetchone()
+    
+    if r:
+        d = dict(r._mapping)
+        sql2 = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) ORDER BY population DESC")
+        with engine.connect() as conn:
+            result = conn.execute(sql2, {"s": state})
+            cities = pd.DataFrame(result.fetchall(), columns=result.keys())
+        show_state_metric_card(state, "Population", d.get("total_pop",0), d.get("city_count",0), cities)
+    else:
+        st.warning(f"State '{state}' not found.")
 
-    sql = f"SELECT * FROM {DB_TABLE_NAME} WHERE 1=1"
-    params = {}
 
-    # Filter state
-    state = filter_info.get("state")
-    if state:
-        sql += " AND LOWER(state)=LOWER(:state)"
-        params["state"] = state
-
-    # Population filters
-    if "min_population" in filter_info:
-        sql += " AND population >= :min_pop"
-        params["min_pop"] = filter_info["min_population"]
-
-    if "max_population" in filter_info:
-        sql += " AND population <= :max_pop"
-        params["max_pop"] = filter_info["max_population"]
-
-    sql += f" ORDER BY population DESC OFFSET 0 ROWS FETCH NEXT {limit} ROWS ONLY"
-
-    df = run_sql(engine, sql, params)
-    show_city_table(df, "Filtered Cities", True)
-
-# ============================================================================
-#  ✨ FALLBACK SQL ROUTER
-# ============================================================================
-
-def handle_sql_router(query, classification, df_features, get_engine_func, city_list):
+def handle_comparison(query, classification, df_features, get_engine_func, city_list):
+    """Handle comparison."""
+    ctype = classification.get("comparison_type", "city_vs_city")
     engine = get_engine_func()
+    
+    if ctype == "state_vs_state":
+        states = classification.get("mentioned_states", [])
+        if len(states) < 2:
+            r = extract_two_states_fuzzy(query)
+            if r and len(r) >= 2:
+                states = [r[0], r[1]]
+        if len(states) < 2:
+            st.warning("Could not find two states to compare.")
+            return
+        
+        def get_state_stats(s):
+            sql = text(f"SELECT state, COUNT(*) as cnt, SUM(population) as pop, AVG(median_age) as age FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) GROUP BY state")
+            with engine.connect() as conn:
+                r = conn.execute(sql, {"s": s}).fetchone()
+            return dict(r._mapping) if r else {}
+        
+        def get_state_cities(s):
+            sql = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) ORDER BY population DESC")
+            with engine.connect() as conn:
+                result = conn.execute(sql, {"s": s})
+                return pd.DataFrame(result.fetchall(), columns=result.keys())
+        
+        s1, s2 = get_state_stats(states[0]), get_state_stats(states[1])
+        c1, c2 = get_state_cities(states[0]), get_state_cities(states[1])
+        
+        if s1 and s2:
+            show_state_comparison(states[0], s1, c1, states[1], s2, c2, query)
+        else:
+            st.warning("Could not find both states.")
+    else:
+        # City vs City comparison
+        cities = classification.get("mentioned_cities", [])
+        if len(cities) < 2:
+            r = extract_two_cities_fuzzy(query, city_list)
+            if r and len(r) >= 2:
+                cities = [r[0], r[1]]
+        if len(cities) < 2:
+            st.warning("Could not find two cities to compare.")
+            return
+        
+        # Fixed SQL execution
+        sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) IN (LOWER(:c1), LOWER(:c2))")
+        with engine.connect() as conn:
+            result = conn.execute(sql, {"c1": cities[0], "c2": cities[1]})
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+        
+        if len(df) >= 2:
+            r1 = df[df["city"].str.lower() == cities[0].lower()].iloc[0]
+            r2 = df[df["city"].str.lower() == cities[1].lower()].iloc[0]
+            show_city_comparison(r1, r2, query)
+        else:
+            st.warning("Could not find both cities.")
 
-    # Basic fallback: top 10 by population
-    sql = build_basic_query(limit=10)
-    df = run_sql(engine, sql)
-
-    show_city_table(df, "Top Cities", True)
+def handle_city_profile(query, classification, df_features, get_engine_func, city_list):
+    """Handle city profile."""
+    handle_single_city(query, classification, df_features, get_engine_func, city_list)
 
 
 def handle_cluster(query, classification, df_features, get_engine_func, city_list):
-    """Handle queries like 'which cluster is Denver in' or 'cluster of Austin'."""
-    
-    # Get city from classifier or fuzzy match
-    cities = classification.get("entities", {}).get("cities", [])
+    """Handle cluster."""
+    if not get_cluster_for_city:
+        st.warning("Cluster not available.")
+        return
+    cities = classification.get("mentioned_cities", [])
     city = cities[0] if cities else extract_single_city_fuzzy(query, city_list)[0]
-    
+    if city:
+        try:
+            cid = get_cluster_for_city(city)
+            if cid is not None:
+                st.markdown(f"### {city} - Cluster {cid}")
+                st.markdown(CLUSTER_LABELS.get(cid, f"Cluster {cid}"))
+        except Exception as e:
+            st.error(str(e))
+
+
+def handle_similar_cities(query, classification, df_features, get_engine_func, city_list):
+    """Handle similar cities."""
+    if not semantic_city_search:
+        st.warning("Similar cities not available.")
+        return
+    cities = classification.get("mentioned_cities", [])
+    city = cities[0] if cities else extract_single_city_fuzzy(query, city_list)[0]
     if not city:
-        st.warning("Could not identify the city for clustering.")
+        st.warning("Could not identify city.")
         return
+    try:
+        results = semantic_city_search(f"cities like {city}", top_k=10)
+        results = [(c,s) for c,s in results if c.lower() != city.lower()]
+        if results:
+            engine = get_engine_func()
+            data = []
+            for c,s in results[:10]:
+                sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city)=LOWER(:c) AND LOWER(state)=LOWER(:s)")
+                with engine.connect() as conn:
+                    r = conn.execute(sql, {"c": c, "s": s}).fetchone()
+                    if r: data.append(dict(r._mapping))
+            if data:
+                show_city_table(pd.DataFrame(data), f"Cities Similar to {city}", True)
+    except Exception as e:
+        st.error(str(e))
 
-    # Get cluster info using cluster_single_city()
-    info = cluster_single_city(city)
 
-    if not info:
-        st.warning(f"No cluster information available for {city}.")
+def handle_lifestyle(query, classification, df_features, get_engine_func, city_list):
+    """Handle lifestyle."""
+    if try_build_lifestyle_card:
+        try:
+            r = try_build_lifestyle_card(query)
+            if r:
+                show_lifestyle_card(r.get("city",""), r.get("state",""), r.get("population",""), r.get("median_age",""), r.get("household_size",""), r.get("description",""), r.get("ai_summary",""))
+                return
+        except: pass
+    handle_city_profile(query, classification, df_features, get_engine_func, city_list)
+
+
+def handle_gpt_knowledge_fallback(query, classification=None, df_features=None, get_engine_func=None, city_list=None):
+    """GPT fallback."""
+    from hybrid_classifier import is_city_related_query
+    if not is_city_related_query(query):
+        show_out_of_scope()
         return
-
-    # Display cluster details
-    st.markdown(f"### 🧠 Cluster for {info['city']}, {info['state']}")
-    st.markdown(f"**Cluster:** {info['cluster_name']} (ID: {info['cluster']})")
-
-    if info.get("cluster_summary"):
-        st.markdown(f"**Summary:** {info['cluster_summary']}")
-
-    # Show similar cities
-    similar_df = cluster_similar_to(city)
-
-    if similar_df is not None and not similar_df.empty:
-        st.markdown("### 🔍 Cities similar to this one")
-        show_city_table(similar_df, "Similar Cities", True)
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
+        r = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": f"Answer about US cities: {query}"}],
+            max_tokens=500
+        )
+        show_ai_response(r.choices[0].message.content, is_fallback=True)
+    except Exception as e:
+        st.error(str(e))
 
 
+def _handle_superlative(query, classification, get_engine_func):
+    """Handle superlative."""
+    metric = classification.get("metric", "population")
+    sort_dir = classification.get("sort_direction", "highest")
+    state = classification.get("state_filter") or (classification.get("mentioned_states", [None])[0] if classification.get("mentioned_states") else None)
+    
+    engine = get_engine_func()
+    order = "DESC" if sort_dir == "highest" else "ASC"
+    
+    if state:
+        sql = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) ORDER BY {metric} {order}")
+        with engine.connect() as conn:
+            result = conn.execute(sql, {"s": state})
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    else:
+        sql = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} ORDER BY {metric} {order}")
+        with engine.connect() as conn:
+            result = conn.execute(sql)
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    
+    if df.empty:
+        st.warning("No results.")
+        return
+    
+    top = df.iloc[0]
+    runners = df.iloc[1:] if len(df) > 1 else pd.DataFrame()
+    label = f"{'Highest' if sort_dir=='highest' else 'Lowest'} {metric.replace('_',' ').title()}"
+    if state: label += f" in {state}"
+    show_superlative_card(top.get("city",""), top.get("state",""), top.get(metric,""), label, runners, None)
+
+
+def _show_fallback_data(df_features):
+    """Show fallback."""
+    st.markdown("### Available Data")
+    if not df_features.empty:
+        show_city_table(df_features.head(10), "Sample Cities", True)
+
+
+def handle_lifestyle_query(query, city_name, classification, df_features, get_engine_func, city_list):
+    """Handle 'Life in X' queries with city profile and AI summary."""
+    from sqlalchemy import text
+    
+    engine = get_engine_func()
+    
+    # Try to find the city
+    sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) = LOWER(:city)")
+    with engine.connect() as conn:
+        result = conn.execute(sql, {"city": city_name}).fetchone()
+    
+    if result:
+        city_data = dict(result._mapping)
+        
+        # Show city profile card
+        show_city_profile_card(city_data.get("city", city_name), city_data.get("state", ""), pd.Series(city_data))
+        
+        # Generate AI summary about life in this city
+        st.markdown("### 🏙️ What's Life Like?")
+        
+        try:
+            # Use OpenAI directly for lifestyle summary
+            from openai import OpenAI
+            client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
+            
+            prompt = f"""Describe what life is like in {city_name}. 
+            Population: {city_data.get('population', 'N/A')}, 
+            Median Age: {city_data.get('median_age', 'N/A')}, 
+            Avg Household Size: {city_data.get('avg_household_size', 'N/A')}. 
+            Give a brief, engaging 2-3 sentence description of the lifestyle, culture, and what it's like to live there."""
+            
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=200
+            )
+            summary = response.choices[0].message.content.strip()
+            st.markdown(summary)
+        except Exception as e:
+            pop = city_data.get('population', 'N/A')
+            age = city_data.get('median_age', 'N/A')
+            if isinstance(pop, (int, float)):
+                st.info(f"A city with population {pop:,} and median age {age}.")
+            else:
+                st.info(f"A city with population {pop} and median age {age}.")
+        
+    else:
+        # City not in database - use GPT knowledge
+        st.warning(f"'{city_name.title()}' not found in our database. Showing general information.")
+        handle_gpt_knowledge_fallback(query)
+
+def handle_single_city_query(query, city_name, df_features, get_engine_func, metric=None):
+    """Handle queries about a specific city with metric detection."""
+    from sqlalchemy import text
+    
+    engine = get_engine_func()
+    q_lower = query.lower()
+    
+    # Try exact match first
+    sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) = LOWER(:city)")
+    with engine.connect() as conn:
+        result = conn.execute(sql, {"city": city_name}).fetchone()
+    
+    # If not found, try fuzzy match
+    if not result:
+        city_list = df_features["city"].unique().tolist() if not df_features.empty else []
+        matched_city, score = fuzzy_match_city(city_name, city_list)
+        if matched_city and score > 70:
+            sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) = LOWER(:city)")
+            with engine.connect() as conn:
+                result = conn.execute(sql, {"city": matched_city}).fetchone()
+    
+    if not result:
+        st.warning(f"City '{city_name}' not found in our database.")
+        handle_gpt_knowledge_fallback(query)
+        return
+    
+    city_data = dict(result._mapping)
+    city = city_data.get("city", city_name)
+    state = city_data.get("state", "")
+    
+    # Detect if asking about a specific metric
+    metric_name = None
+    metric_value = None
+    
+    if "population" in q_lower:
+        metric_name = "Population"
+        metric_value = city_data.get("population", "N/A")
+    elif "median age" in q_lower or "age" in q_lower:
+        metric_name = "Median Age"
+        metric_value = city_data.get("median_age", "N/A")
+    elif "household" in q_lower or "family size" in q_lower:
+        metric_name = "Avg Household Size"
+        metric_value = city_data.get("avg_household_size", "N/A")
+    
+    # If specific metric requested, show metric card
+    if metric_name and metric_value:
+        # Format value
+        if isinstance(metric_value, (int, float)) and metric_value > 1000:
+            formatted_value = f"{int(metric_value):,}"
+        elif isinstance(metric_value, float):
+            formatted_value = f"{metric_value:.1f}"
+        else:
+            formatted_value = str(metric_value)
+        
+        # Display metric card
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            color: white;
+            text-align: center;
+        ">
+            <div style="font-size: 1rem; opacity: 0.9; margin-bottom: 0.5rem;">
+                {city}, {state}
+            </div>
+            <div style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 0.5rem;">
+                {metric_name}
+            </div>
+            <div style="font-size: 3.5rem; font-weight: 700;">
+                {formatted_value}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Generate AI summary about this specific metric
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
+            
+            prompt = f"""The user asked: "{query}"
+            
+            {city}, {state} has a {metric_name.lower()} of {formatted_value}.
+            
+            Additional context:
+            - Population: {city_data.get('population', 'N/A'):,}
+            - Median Age: {city_data.get('median_age', 'N/A')}
+            - Avg Household Size: {city_data.get('avg_household_size', 'N/A')}
+            
+            Give 2-3 short sentences explaining what this {metric_name.lower()} means for {city}. 
+            Include context like comparisons (is it large/small for a US city?) and what it suggests about the city's character.
+            Be concise and insightful."""
+            
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=150
+            )
+            summary = response.choices[0].message.content.strip()
+            
+            st.markdown(f"""
+            <div style="
+                background: rgba(102, 126, 234, 0.1);
+                border-left: 4px solid #667eea;
+                border-radius: 8px;
+                padding: 1rem;
+                margin-top: 1rem;
+            ">
+                <div style="font-size: 0.85rem; color: #667eea; margin-bottom: 0.5rem;">💡 Insight</div>
+                {summary}
+            </div>
+            """, unsafe_allow_html=True)
+            
+        except Exception as e:
+            pass  # Skip AI summary if it fails
+    
+    else:
+        # No specific metric - show full city profile
+        show_city_profile_card(city, state, pd.Series(city_data))
+
+def handle_state_population_query(query, state_name, get_engine_func):
+    """Handle queries about state population."""
+    from sqlalchemy import text
+    
+    engine = get_engine_func()
+    
+    # Get state statistics
+    sql = text(f"""
+        SELECT 
+            state,
+            COUNT(*) as city_count,
+            SUM(population) as total_population,
+            AVG(median_age) as avg_median_age,
+            AVG(avg_household_size) as avg_household_size
+        FROM {DB_TABLE_NAME} 
+        WHERE LOWER(state) = LOWER(:state) 
+        GROUP BY state
+    """)
+    
+    with engine.connect() as conn:
+        result = conn.execute(sql, {"state": state_name}).fetchone()
+    
+    if not result:
+        st.warning(f"State '{state_name}' not found in our database.")
+        handle_gpt_knowledge_fallback(query)
+        return
+    
+    state_data = dict(result._mapping)
+    total_pop = state_data.get("total_population", 0)
+    city_count = state_data.get("city_count", 0)
+    
+    # Format population
+    if isinstance(total_pop, (int, float)):
+        formatted_pop = f"{int(total_pop):,}"
+    else:
+        formatted_pop = str(total_pop)
+    
+    # Display state population card
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        color: white;
+        text-align: center;
+    ">
+        <div style="font-size: 1rem; opacity: 0.9; margin-bottom: 0.5rem;">
+            {state_name}
+        </div>
+        <div style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 0.5rem;">
+            Total Population
+        </div>
+        <div style="font-size: 3.5rem; font-weight: 700;">
+            {formatted_pop}
+        </div>
+        <div style="font-size: 0.85rem; opacity: 0.8; margin-top: 0.5rem;">
+            Across {city_count} cities in our database
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Generate AI summary
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
+        
+        prompt = f"""The user asked about the population of {state_name}.
+        
+        Based on our database:
+        - Total population: {formatted_pop}
+        - Number of cities: {city_count}
+        - Average median age: {state_data.get('avg_median_age', 'N/A'):.1f} years
+        - Average household size: {state_data.get('avg_household_size', 'N/A'):.2f}
+        
+        Give 2-3 short sentences about {state_name}'s population. Include context about its ranking among US states and what the demographics suggest about the state.
+        Be concise and insightful."""
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=150
+        )
+        summary = response.choices[0].message.content.strip()
+        
+        st.markdown(f"""
+        <div style="
+            background: rgba(17, 153, 142, 0.1);
+            border-left: 4px solid #11998e;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        ">
+            <div style="font-size: 0.85rem; color: #11998e; margin-bottom: 0.5rem;">💡 Insight</div>
+            {summary}
+        </div>
+        """, unsafe_allow_html=True)
+        
+    except Exception:
+        pass
+    
+    # Show top cities in this state
+    sql2 = text(f"SELECT TOP 5 city, population FROM {DB_TABLE_NAME} WHERE LOWER(state) = LOWER(:state) ORDER BY population DESC")
+    with engine.connect() as conn:
+        result2 = conn.execute(sql2, {"state": state_name})
+        top_cities = pd.DataFrame(result2.fetchall(), columns=result2.keys())
+    
+    if not top_cities.empty:
+        st.markdown("#### 🏙️ Largest Cities")
+        top_cities["population"] = top_cities["population"].apply(lambda x: f"{int(x):,}")
+        st.dataframe(top_cities, use_container_width=True, hide_index=True)
+
+def handle_superlative_query(query, metric_text, direction, get_engine_func, limit=5):
+    """Handle superlative questions like 'which city has the highest population'."""
+    from sqlalchemy import text
+    
+    engine = get_engine_func()
+    
+    # Map common metric names to column names
+    metric_map = {
+        "population": "population",
+        "people": "population",
+        "residents": "population",
+        "median age": "median_age",
+        "age": "median_age",
+        "oldest": "median_age",
+        "youngest": "median_age",
+        "household size": "avg_household_size",
+        "household": "avg_household_size",
+        "family size": "avg_household_size",
+    }
+    
+    # Find the metric column
+    metric_column = "population"  # default
+    for key, col in metric_map.items():
+        if key in metric_text.lower():
+            metric_column = col
+            break
+    
+    # Determine sort order
+    order = "DESC" if direction == "highest" else "ASC"
+    
+    # Get top cities
+    sql = text(f"SELECT TOP {limit} * FROM {DB_TABLE_NAME} ORDER BY {metric_column} {order}")
+    with engine.connect() as conn:
+        result = conn.execute(sql)
+        df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    
+    if df.empty:
+        st.warning("No results found.")
+        return
+    
+    # Get the top city
+    top = df.iloc[0]
+    city = top.get("city", "Unknown")
+    state = top.get("state", "")
+    value = top.get(metric_column, "N/A")
+    
+    # Format value
+    if isinstance(value, (int, float)) and value > 1000:
+        formatted_value = f"{int(value):,}"
+    elif isinstance(value, float):
+        formatted_value = f"{value:.1f}"
+    else:
+        formatted_value = str(value)
+    
+    # Create label
+    metric_display = metric_column.replace("_", " ").title()
+    rank_label = f"{'Highest' if direction == 'highest' else 'Lowest'} {metric_display}"
+    
+    # Display superlative card
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        color: white;
+        text-align: center;
+    ">
+        <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem;">
+            🏆 {rank_label}
+        </div>
+        <div style="font-size: 2.5rem; font-weight: 700; margin-bottom: 0.25rem;">
+            {city}, {state}
+        </div>
+        <div style="font-size: 3rem; font-weight: 700;">
+            {formatted_value}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Show runners up
+    if len(df) > 1:
+        runners = df.iloc[1:5]
+        st.markdown("#### 🥈 Runners Up")
+        
+        for idx, row in runners.iterrows():
+            r_city = row.get("city", "")
+            r_state = row.get("state", "")
+            r_value = row.get(metric_column, "N/A")
+            
+            if isinstance(r_value, (int, float)) and r_value > 1000:
+                r_formatted = f"{int(r_value):,}"
+            elif isinstance(r_value, float):
+                r_formatted = f"{r_value:.1f}"
+            else:
+                r_formatted = str(r_value)
+            
+            st.markdown(f"""
+            <div style="
+                display: flex;
+                justify-content: space-between;
+                padding: 0.75rem 1rem;
+                background: rgba(102, 126, 234, 0.1);
+                border-radius: 8px;
+                margin-bottom: 0.5rem;
+            ">
+                <span>{r_city}, {r_state}</span>
+                <span style="font-weight: 600;">{r_formatted}</span>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # AI insight
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
+        
+        prompt = f"""The user asked: "{query}"
+        
+        Answer: {city}, {state} has the {direction} {metric_display.lower()} at {formatted_value}.
+        
+        Give 1-2 sentences of insight about why {city} has this ranking and what it means.
+        Be concise."""
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=100
+        )
+        summary = response.choices[0].message.content.strip()
+        
+        st.markdown(f"""
+        <div style="
+            background: rgba(102, 126, 234, 0.1);
+            border-left: 4px solid #667eea;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        ">
+            <div style="font-size: 0.85rem; color: #667eea; margin-bottom: 0.5rem;">💡 Insight</div>
+            {summary}
+        </div>
+        """, unsafe_allow_html=True)
+        
+    except Exception:
+        pass
