@@ -213,7 +213,27 @@ def _check_high_confidence_patterns(q: str, original_query: str) -> dict:
         state = match.group(1).strip().rstrip("?.,!")
         if _is_state(state):
             return _build_result("city_list", states=[state.title()])
+
+    # -----------------------------------------------------------------
+    # Pattern: "cities with population > N" or "cities with population greater than N"
+    # -----------------------------------------------------------------
+    match = re.search(r"cities? with population\s*(?:>|greater than|more than|over|above)\s*(\d+)", q)
+    if match:
+        threshold = int(match.group(1))
+        return _build_result("filter", metric="population", filter_op="gt", filter_value=threshold)
     
+    match = re.search(r"cities? with population\s*(?:<|less than|under|below)\s*(\d+)", q)
+    if match:
+        threshold = int(match.group(1))
+        return _build_result("filter", metric="population", filter_op="lt", filter_value=threshold)
+    
+    # -----------------------------------------------------------------
+    # Pattern: "cities similar to [CITY]" or "cities like [CITY]"
+    # -----------------------------------------------------------------
+    match = re.search(r"cities?\s+(?:similar to|like)\s+(.+?)(?:\?|$)", q)
+    if match:
+        city = match.group(1).strip().rstrip("?.,!")
+        return _build_result("similar_cities", cities=[city.title()])
     # No high-confidence pattern matched
     return None
 
@@ -401,6 +421,8 @@ def _map_query_type_to_mode(query_type: str, intent: str = None) -> str:
         "comparison": "ml_compare_cities",
         "aggregate": "sql",
         "lifestyle": "lifestyle",
+        "filter": "filter",
+        "similar_cities": "similar_cities",
     }
     return mapping.get(query_type, "sql")
 
