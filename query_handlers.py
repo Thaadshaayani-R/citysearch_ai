@@ -94,142 +94,75 @@ from utils import (
 
 def handle_query(query, classification, df_features, get_engine_func=None, 
                  smart_route_func=None, lifestyle_rag_func=None, classify_intent_func=None):
-    """Main query handler."""
+    """Main query handler using LLM classification."""
     if get_engine_func is None:
         get_engine_func = get_engine
     
     city_list = df_features["city"].unique().tolist() if not df_features.empty else []
     
+    # Check if city-related
     if not classification.get("is_city_related", True):
         show_out_of_scope()
         return
     
-    # ========================================================
-    # SAFETY NET: Override for misclassified queries
-    # ========================================================
-    q_lower = query.lower()
-    original_mode = classification.get("original_mode", "")
-
-    # ========================================================
-    # SAFETY NET 0: Single city questions (population of X, tell me about X)
-    # ========================================================
-    import re
-
-    # ========================================================
-    # SAFETY NET: Superlative questions (highest, largest, lowest, smallest)
-    # ========================================================
-    superlative_patterns = [
-        (r"(?:which|what)\s+(?:city|cities)\s+(?:has|have)\s+(?:the\s+)?(?:highest|largest|most|biggest)\s+(.+?)(?:\?|$)", "highest"),
-        (r"(?:which|what)\s+(?:city|cities)\s+(?:has|have)\s+(?:the\s+)?(?:lowest|smallest|least)\s+(.+?)(?:\?|$)", "lowest"),
-        (r"(?:highest|largest|most|biggest)\s+(.+?)\s+(?:city|cities)", "highest"),
-        (r"(?:lowest|smallest|least)\s+(.+?)\s+(?:city|cities)", "lowest"),
-        (r"(?:city|cities)\s+with\s+(?:the\s+)?(?:highest|largest|most|biggest)\s+(.+?)(?:\?|$)", "highest"),
-        (r"(?:city|cities)\s+with\s+(?:the\s+)?(?:lowest|smallest|least)\s+(.+?)(?:\?|$)", "lowest"),
-    ]
-    
-    for pattern, direction in superlative_patterns:
-        match = re.search(pattern, q_lower)
-        if match:
-            metric_text = match.group(1).strip().rstrip("?.,!")
-            handle_superlative_query(query, metric_text, direction, get_engine_func)
-            return
-    
-    # Pattern: "population of [city/state]" or "what is the population of [city/state]"
-    pop_match = re.search(r"(?:what is the |what's the )?population (?:of |in )(.+?)(?:\?|$)", q_lower)
-    if pop_match:
-        name = pop_match.group(1).strip().rstrip("?.,!")
-        
-        # Check if it's a state first
-        from utils import fuzzy_match_state
-        matched_state = fuzzy_match_state(name)
-        if matched_state:
-            handle_state_population_query(query, matched_state, get_engine_func)
-            return
-        
-        # Otherwise treat as city
-        handle_single_city_query(query, name, df_features, get_engine_func)
-        return
-    
-    # Pattern: "tell me about [city]" or "info on [city]"
-    about_match = re.search(r"(?:tell me about|info on|information about|details about)\s+(.+?)(?:\?|$)", q_lower)
-    if about_match:
-        city_name = about_match.group(1).strip().rstrip("?.,!")
-        handle_single_city_query(query, city_name, df_features, get_engine_func)
-        return
-    
-    # ========================================================
-    # SAFETY NET 1: "Life in X" queries should show lifestyle/profile
-    # ========================================================
-    if "life in" in q_lower or "living in" in q_lower or "what is it like in" in q_lower:
-        import re
-        match = re.search(r"(?:life in|living in|what is it like in)\s+(.+?)(?:\?|$)", q_lower)
-        if match:
-            city_name = match.group(1).strip().rstrip("?.,!")
-            handle_lifestyle_query(query, city_name, classification, df_features, get_engine_func, city_list)
-            return
-    
-    # ========================================================
-    # SAFETY NET 2: "Best" queries should go to ML ranking
-    # ========================================================
-    if "best" in q_lower and original_mode not in ["ml_family", "ml_young", "ml_retirement"]:
-        # Family keywords
-        if any(word in q_lower for word in ["family", "families", "kids", "children", "child", "kid"]):
-            handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "families")
-            return
-        
-        # Young professionals keywords
-        if any(word in q_lower for word in ["young", "professional", "adults", "adult", "career", "millennials"]):
-            handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "young_professionals")
-            return
-        
-        # Retirement keywords
-        if any(word in q_lower for word in ["retire", "retirement", "senior", "seniors", "elderly", "retirees"]):
-            handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "retirement")
-            return
-    
-    if classification.get("use_gpt_knowledge", False):
-        handle_gpt_knowledge_fallback(query)
-        return
-    
-    response_type = classification.get("response_type", "city_list")
-    original_mode = classification.get("original_mode", response_type)
+    # Get classification details from LLM
+    query_type = classification.get("query_type", "city_list")
+    metric = classification.get("metric")
+    direction = classification.get("direction")
+    limit = classification.get("limit", 10) or 10
+    cities = classification.get("cities", [])
+    states = classification.get("states", [])
+    intent = classification.get("intent", "general")
     
     try:
-        if original_mode in ["sql", "sql_query"]:
-            handle_sql_query(query, classification, df_features, get_engine_func, city_list)
-        elif original_mode in ["semantic", "semantic_search"]:
-            handle_semantic_search(query, classification, df_features, get_engine_func, city_list)
-        elif original_mode in ["hybrid", "hybrid_search"]:
-            handle_semantic_search(query, classification, df_features, get_engine_func, city_list)
-        elif original_mode == "ml_family":
-            handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "families")
-        elif original_mode == "ml_young":
-            handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "young_professionals")
-        elif original_mode == "ml_retirement":
-            handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "retirement")
-        elif original_mode in ["ml_compare_cities", "comparison"]:
+        # Route based on LLM-detected query type
+        if query_type == "single_city":
+            city_name = cities[0] if cities else None
+            if city_name:
+                handle_single_city_query(query, city_name, df_features, get_engine_func, metric)
+            else:
+                handle_sql_query(query, classification, df_features, get_engine_func, city_list)
+        
+        elif query_type == "single_state":
+            state_name = states[0] if states else None
+            if state_name and metric == "population":
+                handle_state_population_query(query, state_name, get_engine_func)
+            elif state_name:
+                handle_single_state(query, classification, df_features, get_engine_func, city_list)
+            else:
+                handle_sql_query(query, classification, df_features, get_engine_func, city_list)
+        
+        elif query_type == "superlative":
+            handle_superlative_query(query, metric or "population", direction or "highest", get_engine_func, limit)
+        
+        elif query_type == "comparison":
             handle_comparison(query, classification, df_features, get_engine_func, city_list)
-        elif response_type == "single_city":
-            handle_single_city(query, classification, df_features, get_engine_func, city_list)
-        elif response_type == "single_state":
-            handle_single_state(query, classification, df_features, get_engine_func, city_list)
-        elif response_type == "city_list":
+        
+        elif query_type == "ranking":
+            # Map intent to ML ranking
+            if intent == "families":
+                handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "families")
+            elif intent == "young_professionals":
+                handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "young_professionals")
+            elif intent == "retirement":
+                handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "retirement")
+            else:
+                handle_sql_query(query, classification, df_features, get_engine_func, city_list)
+        
+        elif query_type == "aggregate":
             handle_sql_query(query, classification, df_features, get_engine_func, city_list)
-        elif response_type == "city_profile":
-            handle_city_profile(query, classification, df_features, get_engine_func, city_list)
-        elif response_type == "aggregate":
-            handle_sql_query(query, classification, df_features, get_engine_func, city_list)
-        elif response_type == "recommendation":
-            intent = classification.get("specific_intent", "families")
-            handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, intent)
-        elif response_type == "cluster":
-            handle_cluster(query, classification, df_features, get_engine_func, city_list)
-        elif response_type == "similar_cities":
-            handle_similar_cities(query, classification, df_features, get_engine_func, city_list)
-        elif response_type == "lifestyle":
-            handle_lifestyle(query, classification, df_features, get_engine_func, city_list)
+        
+        elif query_type == "lifestyle":
+            city_name = cities[0] if cities else None
+            if city_name:
+                handle_lifestyle_query(query, city_name, classification, df_features, get_engine_func, city_list)
+            else:
+                handle_sql_query(query, classification, df_features, get_engine_func, city_list)
+        
         else:
+            # Default to SQL query
             handle_sql_query(query, classification, df_features, get_engine_func, city_list)
+    
     except Exception as e:
         st.error(f"Error processing query: {str(e)}")
         _show_fallback_data(df_features)
@@ -680,7 +613,7 @@ def handle_lifestyle_query(query, city_name, classification, df_features, get_en
         st.warning(f"'{city_name.title()}' not found in our database. Showing general information.")
         handle_gpt_knowledge_fallback(query)
 
-def handle_single_city_query(query, city_name, df_features, get_engine_func):
+def handle_single_city_query(query, city_name, df_features, get_engine_func, metric=None):
     """Handle queries about a specific city with metric detection."""
     from sqlalchemy import text
     
@@ -913,7 +846,7 @@ def handle_state_population_query(query, state_name, get_engine_func):
         top_cities["population"] = top_cities["population"].apply(lambda x: f"{int(x):,}")
         st.dataframe(top_cities, use_container_width=True, hide_index=True)
 
-def handle_superlative_query(query, metric_text, direction, get_engine_func):
+def handle_superlative_query(query, metric_text, direction, get_engine_func, limit=5):
     """Handle superlative questions like 'which city has the highest population'."""
     from sqlalchemy import text
     
@@ -943,8 +876,8 @@ def handle_superlative_query(query, metric_text, direction, get_engine_func):
     # Determine sort order
     order = "DESC" if direction == "highest" else "ASC"
     
-    # Get top 5 cities
-    sql = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} ORDER BY {metric_column} {order}")
+    # Get top cities
+    sql = text(f"SELECT TOP {limit} * FROM {DB_TABLE_NAME} ORDER BY {metric_column} {order}")
     with engine.connect() as conn:
         result = conn.execute(sql)
         df = pd.DataFrame(result.fetchall(), columns=result.keys())
