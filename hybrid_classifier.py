@@ -383,11 +383,11 @@ IMPORTANT RULES:
 - query_type = "general_knowledge" for questions that need GPT knowledge (why, what makes, history, culture, etc.)
 
 Examples:
-- "Why is Texas so big?" → is_city_related: true, needs_gpt_knowledge: true, query_type: "general_knowledge", states: ["Texas"]
-- "What makes New York expensive?" → is_city_related: true, needs_gpt_knowledge: true, query_type: "general_knowledge", cities: ["New York"]
-- "Population of Denver" → is_city_related: true, needs_gpt_knowledge: false, query_type: "single_city"
-- "Best pizza recipe" → is_city_related: false
-- "Who won the Super Bowl?" → is_city_related: false"""
+- "Why is Texas so big?" -> is_city_related: true, needs_gpt_knowledge: true, query_type: "general_knowledge", states: ["Texas"]
+- "What makes New York expensive?" -> is_city_related: true, needs_gpt_knowledge: true, query_type: "general_knowledge", cities: ["New York"]
+- "Population of Denver" -> is_city_related: true, needs_gpt_knowledge: false, query_type: "single_city"
+- "Best pizza recipe" -> is_city_related: false
+- "Who won the Super Bowl?" -> is_city_related: false"""
 }
 
 Classification rules:
