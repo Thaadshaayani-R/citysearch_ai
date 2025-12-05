@@ -43,7 +43,14 @@ from core.ml_router import (
 from core.query_router import build_sql_with_fallback
 from core.semantic_search import semantic_city_search
 from core.lifestyle_rag_v2 import try_build_lifestyle_card
-from core.cluster_router import get_cluster_for_city
+
+from core.cluster_router import (
+    cluster_all,
+    cluster_by_state,
+    cluster_single_city,
+    cluster_similar_to
+)
+
 from core.cluster_explain import explain_cluster
 from core.cluster_labels import CLUSTER_LABELS
 from core.ml_explain import explain_ml_results
@@ -496,4 +503,38 @@ def handle_sql_router(query, classification, df_features, get_engine_func, city_
     df = run_sql(engine, sql)
 
     show_city_table(df, "Top Cities", True)
+
+
+def handle_cluster(query, classification, df_features, get_engine_func, city_list):
+    """Handle queries like 'which cluster is Denver in' or 'cluster of Austin'."""
+    
+    # Get city from classifier or fuzzy match
+    cities = classification.get("entities", {}).get("cities", [])
+    city = cities[0] if cities else extract_single_city_fuzzy(query, city_list)[0]
+    
+    if not city:
+        st.warning("Could not identify the city for clustering.")
+        return
+
+    # Get cluster info using cluster_single_city()
+    info = cluster_single_city(city)
+
+    if not info:
+        st.warning(f"No cluster information available for {city}.")
+        return
+
+    # Display cluster details
+    st.markdown(f"### 🧠 Cluster for {info['city']}, {info['state']}")
+    st.markdown(f"**Cluster:** {info['cluster_name']} (ID: {info['cluster']})")
+
+    if info.get("cluster_summary"):
+        st.markdown(f"**Summary:** {info['cluster_summary']}")
+
+    # Show similar cities
+    similar_df = cluster_similar_to(city)
+
+    if similar_df is not None and not similar_df.empty:
+        st.markdown("### 🔍 Cities similar to this one")
+        show_city_table(similar_df, "Similar Cities", True)
+
 
