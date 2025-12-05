@@ -126,11 +126,11 @@ st.markdown(get_custom_css(st.session_state["theme"]), unsafe_allow_html=True)
 # SIDEBAR
 # -------------------------------------------------
 # For testing - add a cache clear button
-if st.sidebar.button("🗑️ Clear Cache"):
-    from hybrid_classifier import clear_classification_cache
-    clear_classification_cache()
-    st.sidebar.success("Cache cleared!")
-    st.rerun()
+# if st.sidebar.button("🗑️ Clear Cache"):
+#     from hybrid_classifier import clear_classification_cache
+#     clear_classification_cache()
+#     st.sidebar.success("Cache cleared!")
+#     st.rerun()
     
 with st.sidebar:
     # Mode selector
