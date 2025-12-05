@@ -243,7 +243,14 @@ if mode == "Search":
         source = classification.get("source", "unknown")
         confidence = classification.get("confidence", "unknown")
         if source == "rule_based":
-            st.caption(f"⚡ Classified using rule-based logic (confidence: {confidence})")
+            source = classification.get("source", "unknown")
+            source_labels = {
+                "cache": "⚡ Cached result (instant)",
+                "pattern": "⚡ Pattern match (free)",
+                "llm": "🧠 LLM classification",
+                "rule_based": "📋 Rule-based fallback"
+            }
+            st.caption(source_labels.get(source, f"⚡ Classified ({source})"))
         else:
             st.caption(f"🤖 Classified using AI (confidence: {confidence})")
         
