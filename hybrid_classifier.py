@@ -37,6 +37,11 @@ import re
 # =============================================================================
 # In production, use Redis or database for persistence
 _classification_cache = {}
+def clear_classification_cache():
+    """Clear the cache - call this when patterns are updated."""
+    global _classification_cache
+    _classification_cache = {}
+    return "Cache cleared"
 
 
 # =============================================================================
@@ -215,15 +220,31 @@ def _check_high_confidence_patterns(q: str, original_query: str) -> dict:
             return _build_result("city_list", states=[state.title()])
 
     # -----------------------------------------------------------------
-    # Pattern: "cities with population > N" or "cities with population greater than N"
+    # Pattern: "cities with population > N" (handles >, >=, greater than, more than, etc.)
     # -----------------------------------------------------------------
-    match = re.search(r"cities?\s+with\s+population\s*(?:>|greater than|more than|over|above)\s*(\d[\d,]*)", q)
+    # Pattern 1: "cities with population > 1000000" or "population > 1000000"
+    match = re.search(r"population\s*(?:>|>=)\s*(\d[\d,]*)", q)
     if match:
-        # Remove commas and convert to int
         threshold = int(match.group(1).replace(",", ""))
         return _build_result("filter", metric="population", filter_op="gt", filter_value=threshold)
     
-    match = re.search(r"cities?\s+with\s+population\s*(?:<|less than|under|below)\s*(\d[\d,]*)", q)
+    # Pattern 2: "cities with population greater than 1000000"
+    match = re.search(r"population\s+(?:greater than|more than|over|above)\s+(\d[\d,]*)", q)
+    if match:
+        threshold = int(match.group(1).replace(",", ""))
+        return _build_result("filter", metric="population", filter_op="gt", filter_value=threshold)
+    
+    # Pattern 3: "cities with population < 100000"
+    match = re.search(r"population\s*(?:<|<=)\s*(\d[\d,]*)", q)
+    if match:
+        threshold = int(match.group(1).replace(",", ""))
+        return _build_result("filter", metric="population", filter_op="lt", filter_value=threshold)
+    
+    # Pattern 4: "cities with population less than 100000"
+    match = re.search(r"population\s+(?:less than|under|below)\s+(\d[\d,]*)", q)
+    if match:
+        threshold = int(match.group(1).replace(",", ""))
+        return _build_result("filter", metric="population", filter_op="lt", filter_value=threshold)
     # -----------------------------------------------------------------
     # Pattern: "population > N" without "cities with"
     # -----------------------------------------------------------------
