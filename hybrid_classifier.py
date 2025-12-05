@@ -66,6 +66,11 @@ def classify_query_hybrid(query: str) -> dict:
     """
     q_lower = query.lower().strip()
     
+    # DEBUG: Print query to logs (remove in production)
+    print(f"Classifying: {query}")
+    print(f"Query lower: {q_lower}")
+    
+    
     # =========================================================================
     # TIER 1: Check Cache (FREE, instant)
     # =========================================================================
