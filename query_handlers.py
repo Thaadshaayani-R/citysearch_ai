@@ -1191,17 +1191,19 @@ def handle_similar_cities_query(query, city_name, df_features, get_engine_func):
         except Exception as e:
             pass  # Fall back to demographic similarity
     
-    # Fallback: Find cities with similar demographics
+    # Fallback: Find cities with similar demographics (excluding same state for variety)
     pop_range_low = ref_pop * 0.5
-    pop_range_high = ref_pop * 1.5
+    pop_range_high = ref_pop * 2.0
     age_range_low = ref_age - 5
     age_range_high = ref_age + 5
     
+    # First try: Different states with similar demographics
     sql = text(f"""
-        SELECT * FROM {DB_TABLE_NAME} 
+        SELECT TOP 10 * FROM {DB_TABLE_NAME} 
         WHERE population BETWEEN :pop_low AND :pop_high
         AND median_age BETWEEN :age_low AND :age_high
         AND LOWER(city) != LOWER(:city)
+        AND LOWER(state) != LOWER(:state)
         ORDER BY ABS(population - :ref_pop) + ABS(median_age - :ref_age) * 100000
     """)
     
@@ -1212,10 +1214,33 @@ def handle_similar_cities_query(query, city_name, df_features, get_engine_func):
             "age_low": age_range_low,
             "age_high": age_range_high,
             "city": city_name,
+            "state": ref_city.get("state", ""),
             "ref_pop": ref_pop,
             "ref_age": ref_age
         })
         df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    
+    # If not enough results, include same state
+    if len(df) < 5:
+        sql = text(f"""
+            SELECT TOP 10 * FROM {DB_TABLE_NAME} 
+            WHERE population BETWEEN :pop_low AND :pop_high
+            AND median_age BETWEEN :age_low AND :age_high
+            AND LOWER(city) != LOWER(:city)
+            ORDER BY ABS(population - :ref_pop) + ABS(median_age - :ref_age) * 100000
+        """)
+        
+        with engine.connect() as conn:
+            result = conn.execute(sql, {
+                "pop_low": pop_range_low,
+                "pop_high": pop_range_high,
+                "age_low": age_range_low,
+                "age_high": age_range_high,
+                "city": city_name,
+                "ref_pop": ref_pop,
+                "ref_age": ref_age
+            })
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
     
     if df.empty:
         st.info(f"No cities found with similar demographics to {city_name}.")
