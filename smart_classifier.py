@@ -42,7 +42,15 @@ def smart_classify(query: str) -> Dict[str, Any]:
     
     # Stage 3: Confidence Check & Reinterpret if needed
     final = _stage3_confidence_check(query, verified)
+
+    # NEW: normalize state & city filters for router
+    entities = final.get("entities", {})
+    states = entities.get("states", [])
+    cities = entities.get("cities", [])
     
+    final["state_filter"] = states[0] if states else None
+    final["city_filter"] = cities[0] if cities else None
+
     # Add metadata
     final["pipeline_complete"] = True
     final["source"] = final.get("source", "smart_classifier")
@@ -128,7 +136,13 @@ Return JSON:
         
         result = json.loads(response.choices[0].message.content)
         result["success"] = True
+        
+        # NEW: normalize sort_direction for router
+        if "direction" in result:
+            result["sort_direction"] = result["direction"]
+        
         return result
+
         
     except Exception as e:
         print(f"LLM classification error: {e}")
@@ -215,7 +229,9 @@ def _rule_based_classify(query: str) -> Dict[str, Any]:
     elif result["entities"]["states"] and result["metric"]:
         result["query_type"] = "single_state"
         result["confidence"] = 0.6
-    
+
+    # NEW: normalize sort_direction for router
+    result["sort_direction"] = result.get("direction")
     return result
 
 
