@@ -217,9 +217,19 @@ def _check_high_confidence_patterns(q: str, original_query: str) -> dict:
     # -----------------------------------------------------------------
     # Pattern: "cities with population > N" or "cities with population greater than N"
     # -----------------------------------------------------------------
-    match = re.search(r"cities? with population\s*(?:>|greater than|more than|over|above)\s*(\d+)", q)
+    match = re.search(r"cities?\s+with\s+population\s*(?:>|greater than|more than|over|above)\s*(\d[\d,]*)", q)
     if match:
-        threshold = int(match.group(1))
+        # Remove commas and convert to int
+        threshold = int(match.group(1).replace(",", ""))
+        return _build_result("filter", metric="population", filter_op="gt", filter_value=threshold)
+    
+    match = re.search(r"cities?\s+with\s+population\s*(?:<|less than|under|below)\s*(\d[\d,]*)", q)
+    # -----------------------------------------------------------------
+    # Pattern: "population > N" without "cities with"
+    # -----------------------------------------------------------------
+    match = re.search(r"population\s*(?:>|greater than|more than|over|above)\s*(\d[\d,]*)", q)
+    if match:
+        threshold = int(match.group(1).replace(",", ""))
         return _build_result("filter", metric="population", filter_op="gt", filter_value=threshold)
     
     match = re.search(r"cities? with population\s*(?:<|less than|under|below)\s*(\d+)", q)
