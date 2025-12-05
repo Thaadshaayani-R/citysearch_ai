@@ -1169,27 +1169,27 @@ def handle_similar_cities_query(query, city_name, df_features, get_engine_func):
     """, unsafe_allow_html=True)
     
     # Try semantic search first if available
-    if semantic_city_search:
-        try:
-            results = semantic_city_search(f"cities like {city_name}", top_k=11)
-            # Filter out the reference city
-            results = [(c, s) for c, s in results if c.lower() != city_name.lower()][:10]
+    # if semantic_city_search:
+    #     try:
+    #         results = semantic_city_search(f"cities like {city_name}", top_k=11)
+    #         # Filter out the reference city
+    #         results = [(c, s) for c, s in results if c.lower() != city_name.lower()][:10]
             
-            if results:
-                data = []
-                for c, s in results:
-                    sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city)=LOWER(:c) AND LOWER(state)=LOWER(:s)")
-                    with engine.connect() as conn:
-                        r = conn.execute(sql, {"c": c, "s": s}).fetchone()
-                        if r:
-                            data.append(dict(r._mapping))
+    #         if results:
+    #             data = []
+    #             for c, s in results:
+    #                 sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city)=LOWER(:c) AND LOWER(state)=LOWER(:s)")
+    #                 with engine.connect() as conn:
+    #                     r = conn.execute(sql, {"c": c, "s": s}).fetchone()
+    #                     if r:
+    #                         data.append(dict(r._mapping))
                 
-                if data:
-                    st.markdown("### 🔍 Similar Cities (Semantic Match)")
-                    show_city_table(pd.DataFrame(data), f"Cities Similar to {city_name}", True)
-                    return
-        except Exception as e:
-            pass  # Fall back to demographic similarity
+    #             if data:
+    #                 st.markdown("### 🔍 Similar Cities (Semantic Match)")
+    #                 show_city_table(pd.DataFrame(data), f"Cities Similar to {city_name}", True)
+    #                 return
+    #     except Exception as e:
+    #         pass  # Fall back to demographic similarity
     
     # Fallback: Find cities with similar demographics (excluding same state for variety)
     pop_range_low = ref_pop * 0.5
