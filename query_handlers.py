@@ -104,62 +104,6 @@ def handle_query(query, classification, df_features, get_engine_func=None,
         show_out_of_scope()
         return
     
-    # ========================================================
-    # SAFETY NET: Override for misclassified queries
-    # ========================================================
-    q_lower = query.lower()
-    original_mode = classification.get("original_mode", "")
-
-    # ========================================================
-    # SAFETY NET 0: Single city questions (population of X, tell me about X)
-    # ========================================================
-    import re
-    
-    # Pattern: "population of [city]" or "what is the population of [city]"
-    pop_match = re.search(r"(?:what is the |what's the )?population (?:of |in )(.+?)(?:\?|$)", q_lower)
-    if pop_match:
-        city_name = pop_match.group(1).strip().rstrip("?.,!")
-        # Find and show just this city
-        handle_single_city_query(query, city_name, df_features, get_engine_func)
-        return
-    
-    # Pattern: "tell me about [city]" or "info on [city]"
-    about_match = re.search(r"(?:tell me about|info on|information about|details about)\s+(.+?)(?:\?|$)", q_lower)
-    if about_match:
-        city_name = about_match.group(1).strip().rstrip("?.,!")
-        handle_single_city_query(query, city_name, df_features, get_engine_func)
-        return
-    
-    # ========================================================
-    # SAFETY NET 1: "Life in X" queries should show lifestyle/profile
-    # ========================================================
-    if "life in" in q_lower or "living in" in q_lower or "what is it like in" in q_lower:
-        import re
-        match = re.search(r"(?:life in|living in|what is it like in)\s+(.+?)(?:\?|$)", q_lower)
-        if match:
-            city_name = match.group(1).strip().rstrip("?.,!")
-            handle_lifestyle_query(query, city_name, classification, df_features, get_engine_func, city_list)
-            return
-    
-    # ========================================================
-    # SAFETY NET 2: "Best" queries should go to ML ranking
-    # ========================================================
-    if "best" in q_lower and original_mode not in ["ml_family", "ml_young", "ml_retirement"]:
-        # Family keywords
-        if any(word in q_lower for word in ["family", "families", "kids", "children", "child", "kid"]):
-            handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "families")
-            return
-        
-        # Young professionals keywords
-        if any(word in q_lower for word in ["young", "professional", "adults", "adult", "career", "millennials"]):
-            handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "young_professionals")
-            return
-        
-        # Retirement keywords
-        if any(word in q_lower for word in ["retire", "retirement", "senior", "seniors", "elderly", "retirees"]):
-            handle_ml_ranking(query, classification, df_features, get_engine_func, city_list, "retirement")
-            return
-    
     if classification.get("use_gpt_knowledge", False):
         handle_gpt_knowledge_fallback(query)
         return
@@ -326,22 +270,15 @@ def handle_ml_ranking(query, classification, df_features, get_engine_func, city_
     df = None
     if func:
         try:
-            # Call function without any parameters
-            df = func()
-            # Filter by state manually if needed
-            if state and df is not None and not df.empty and "state" in df.columns:
-                filtered = df[df["state"].str.lower() == state.lower()]
-                if not filtered.empty:
-                    df = filtered
+            df = func(state=state)
         except Exception as e:
             st.warning(f"ML error: {e}")
     
-    # If ML failed or returned empty, use fallback
     if df is None or df.empty:
         df = _fallback_ranking(df_features, intent, state)
     
     if df is not None and not df.empty:
-        show_recommendation_card(df.iloc[0], intent, df, query)
+        show_recommendation_card(df.iloc[0], intent, df)
         if explain_ml_results:
             try:
                 insights = explain_ml_results(query, df)
@@ -418,9 +355,7 @@ def handle_single_state(query, classification, df_features, get_engine_func, cit
     if r:
         d = dict(r._mapping)
         sql2 = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) ORDER BY population DESC")
-        with engine.connect() as conn:
-            result = conn.execute(sql2, {"s": state})
-            cities = pd.DataFrame(result.fetchall(), columns=result.keys())
+        cities = pd.read_sql(sql2, engine, params={"s": state})
         show_state_metric_card(state, "Population", d.get("total_pop",0), d.get("city_count",0), cities)
     else:
         st.warning(f"State '{state}' not found.")
@@ -429,53 +364,43 @@ def handle_single_state(query, classification, df_features, get_engine_func, cit
 def handle_comparison(query, classification, df_features, get_engine_func, city_list):
     """Handle comparison."""
     ctype = classification.get("comparison_type", "city_vs_city")
-    engine = get_engine_func()
     
     if ctype == "state_vs_state":
         states = classification.get("mentioned_states", [])
         if len(states) < 2:
             r = extract_two_states_fuzzy(query)
-            if r and len(r) >= 2:
-                states = [r[0], r[1]]
+            if r and len(r) >= 2: states = [r[0], r[1]]
         if len(states) < 2:
             st.warning("Could not find two states to compare.")
             return
         
-        def get_state_stats(s):
+        engine = get_engine_func()
+        def stats(s):
             sql = text(f"SELECT state, COUNT(*) as cnt, SUM(population) as pop, AVG(median_age) as age FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) GROUP BY state")
             with engine.connect() as conn:
                 r = conn.execute(sql, {"s": s}).fetchone()
             return dict(r._mapping) if r else {}
+        def cities(s):
+            return pd.read_sql(text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) ORDER BY population DESC"), engine, params={"s": s})
         
-        def get_state_cities(s):
-            sql = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) ORDER BY population DESC")
-            with engine.connect() as conn:
-                result = conn.execute(sql, {"s": s})
-                return pd.DataFrame(result.fetchall(), columns=result.keys())
-        
-        s1, s2 = get_state_stats(states[0]), get_state_stats(states[1])
-        c1, c2 = get_state_cities(states[0]), get_state_cities(states[1])
-        
+        s1, s2 = stats(states[0]), stats(states[1])
+        c1, c2 = cities(states[0]), cities(states[1])
         if s1 and s2:
             show_state_comparison(states[0], s1, c1, states[1], s2, c2, query)
         else:
             st.warning("Could not find both states.")
     else:
-        # City vs City comparison
         cities = classification.get("mentioned_cities", [])
         if len(cities) < 2:
             r = extract_two_cities_fuzzy(query, city_list)
-            if r and len(r) >= 2:
-                cities = [r[0], r[1]]
+            if r and len(r) >= 2: cities = [r[0], r[1]]
         if len(cities) < 2:
             st.warning("Could not find two cities to compare.")
             return
         
-        # Fixed SQL execution
+        engine = get_engine_func()
         sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) IN (LOWER(:c1), LOWER(:c2))")
-        with engine.connect() as conn:
-            result = conn.execute(sql, {"c1": cities[0], "c2": cities[1]})
-            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+        df = pd.read_sql(sql, engine, params={"c1": cities[0], "c2": cities[1]})
         
         if len(df) >= 2:
             r1 = df[df["city"].str.lower() == cities[0].lower()].iloc[0]
@@ -483,6 +408,7 @@ def handle_comparison(query, classification, df_features, get_engine_func, city_
             show_city_comparison(r1, r2, query)
         else:
             st.warning("Could not find both cities.")
+
 
 def handle_city_profile(query, classification, df_features, get_engine_func, city_list):
     """Handle city profile."""
@@ -575,14 +501,10 @@ def _handle_superlative(query, classification, get_engine_func):
     
     if state:
         sql = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} WHERE LOWER(state)=LOWER(:s) ORDER BY {metric} {order}")
-        with engine.connect() as conn:
-            result = conn.execute(sql, {"s": state})
-            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+        df = pd.read_sql(sql, engine, params={"s": state})
     else:
         sql = text(f"SELECT TOP 5 * FROM {DB_TABLE_NAME} ORDER BY {metric} {order}")
-        with engine.connect() as conn:
-            result = conn.execute(sql)
-            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+        df = pd.read_sql(sql, engine)
     
     if df.empty:
         st.warning("No results.")
@@ -600,87 +522,3 @@ def _show_fallback_data(df_features):
     st.markdown("### Available Data")
     if not df_features.empty:
         show_city_table(df_features.head(10), "Sample Cities", True)
-
-
-def handle_lifestyle_query(query, city_name, classification, df_features, get_engine_func, city_list):
-    """Handle 'Life in X' queries with city profile and AI summary."""
-    from sqlalchemy import text
-    
-    engine = get_engine_func()
-    
-    # Try to find the city
-    sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) = LOWER(:city)")
-    with engine.connect() as conn:
-        result = conn.execute(sql, {"city": city_name}).fetchone()
-    
-    if result:
-        city_data = dict(result._mapping)
-        
-        # Show city profile card
-        show_city_profile_card(city_data.get("city", city_name), city_data.get("state", ""), pd.Series(city_data))
-        
-        # Generate AI summary about life in this city
-        st.markdown("### 🏙️ What's Life Like?")
-        
-        try:
-            # Use OpenAI directly for lifestyle summary
-            from openai import OpenAI
-            client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
-            
-            prompt = f"""Describe what life is like in {city_name}. 
-            Population: {city_data.get('population', 'N/A')}, 
-            Median Age: {city_data.get('median_age', 'N/A')}, 
-            Avg Household Size: {city_data.get('avg_household_size', 'N/A')}. 
-            Give a brief, engaging 2-3 sentence description of the lifestyle, culture, and what it's like to live there."""
-            
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=200
-            )
-            summary = response.choices[0].message.content.strip()
-            st.markdown(summary)
-        except Exception as e:
-            pop = city_data.get('population', 'N/A')
-            age = city_data.get('median_age', 'N/A')
-            if isinstance(pop, (int, float)):
-                st.info(f"A city with population {pop:,} and median age {age}.")
-            else:
-                st.info(f"A city with population {pop} and median age {age}.")
-        
-    else:
-        # City not in database - use GPT knowledge
-        st.warning(f"'{city_name.title()}' not found in our database. Showing general information.")
-        handle_gpt_knowledge_fallback(query)
-
-def handle_single_city_query(query, city_name, df_features, get_engine_func):
-    """Handle queries about a specific city."""
-    from sqlalchemy import text
-    
-    engine = get_engine_func()
-    
-    # Try exact match first
-    sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) = LOWER(:city)")
-    with engine.connect() as conn:
-        result = conn.execute(sql, {"city": city_name}).fetchone()
-    
-    # If not found, try fuzzy match
-    if not result:
-        city_list = df_features["city"].unique().tolist() if not df_features.empty else []
-        matched_city, score = fuzzy_match_city(city_name, city_list)
-        if matched_city and score > 70:
-            sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) = LOWER(:city)")
-            with engine.connect() as conn:
-                result = conn.execute(sql, {"city": matched_city}).fetchone()
-    
-    if result:
-        city_data = dict(result._mapping)
-        show_city_profile_card(
-            city_data.get("city", city_name), 
-            city_data.get("state", ""), 
-            pd.Series(city_data)
-        )
-    else:
-        st.warning(f"City '{city_name}' not found in our database.")
-        # Try GPT knowledge as fallback
-        handle_gpt_knowledge_fallback(query)
