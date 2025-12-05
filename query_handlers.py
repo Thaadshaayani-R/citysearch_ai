@@ -169,6 +169,9 @@ def handle_query(query, classification, df_features, get_engine_func=None,
                 handle_similar_cities_query(query, city_name, df_features, get_engine_func)
             else:
                 handle_sql_query(query, classification, df_features, get_engine_func, city_list)
+
+        elif query_type == "general_knowledge" or classification.get("needs_gpt_knowledge"):
+            handle_general_knowledge_query(query, classification)
                 
         else:
             # Default fallback
@@ -1286,3 +1289,144 @@ def handle_similar_cities_query(query, city_name, df_features, get_engine_func):
         
     except Exception:
         pass
+
+# =============================================================================
+# GENERAL KNOWLEDGE HANDLER
+# =============================================================================
+
+def handle_general_knowledge_query(query, classification):
+    """
+    Handle city/state questions that need GPT general knowledge.
+    
+    Examples:
+        - "Why is Texas so big?"
+        - "What makes New York expensive?"
+        - "History of Chicago"
+    """
+    cities = classification.get("cities", [])
+    states = classification.get("states", [])
+    
+    # Determine the subject
+    if cities:
+        subject = f"{cities[0]} (city)"
+    elif states:
+        subject = f"{states[0]} (state)"
+    else:
+        subject = "US cities/states"
+    
+    # Show info banner
+    st.markdown(f"""
+    <div style="
+        background: rgba(102, 126, 234, 0.1);
+        border-left: 4px solid #667eea;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+    ">
+        ℹ️ This answer is from AI general knowledge, not from our database.
+    </div>
+    """, unsafe_allow_html=True)
+    
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
+        
+        prompt = f"""The user asked about US cities/states: "{query}"
+
+Please provide a helpful, informative answer about {subject}.
+
+Guidelines:
+- Be informative and educational
+- Include relevant facts, history, or context
+- Keep the response concise (3-5 paragraphs max)
+- Focus on what makes this place unique or interesting
+- If discussing size, population, or demographics, provide context"""
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a knowledgeable assistant specializing in US cities and states. Provide helpful, accurate information."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=500,
+            temperature=0.7
+        )
+        
+        answer = response.choices[0].message.content.strip()
+        
+        # Display the answer
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            color: white;
+        ">
+            <div style="font-size: 1.2rem; font-weight: 600; margin-bottom: 0.5rem;">
+                🤖 AI Response
+            </div>
+            <div style="font-size: 0.85rem; opacity: 0.8;">
+                About: {subject}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown(answer)
+        
+        # If we have related data in database, show it
+        if cities or states:
+            _show_related_database_info(cities, states)
+        
+    except Exception as e:
+        st.error(f"Could not generate response: {str(e)}")
+
+
+def _show_related_database_info(cities, states):
+    """Show related data from database if available."""
+    try:
+        engine = get_engine()
+        
+        if cities:
+            city = cities[0]
+            sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) = LOWER(:city)")
+            with engine.connect() as conn:
+                result = conn.execute(sql, {"city": city}).fetchone()
+            
+            if result:
+                data = dict(result._mapping)
+                st.markdown("---")
+                st.markdown("#### 📊 From Our Database")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    pop = data.get('population', 'N/A')
+                    st.metric("Population", f"{pop:,}" if isinstance(pop, (int, float)) else pop)
+                with col2:
+                    st.metric("Median Age", data.get('median_age', 'N/A'))
+                with col3:
+                    st.metric("Household Size", data.get('avg_household_size', 'N/A'))
+        
+        elif states:
+            state = states[0]
+            sql = text(f"""
+                SELECT COUNT(*) as city_count, SUM(population) as total_pop, AVG(median_age) as avg_age
+                FROM {DB_TABLE_NAME} WHERE LOWER(state) = LOWER(:state)
+            """)
+            with engine.connect() as conn:
+                result = conn.execute(sql, {"state": state}).fetchone()
+            
+            if result and result[0] > 0:
+                st.markdown("---")
+                st.markdown("#### 📊 From Our Database")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Cities in DB", result[0])
+                with col2:
+                    pop = result[1]
+                    st.metric("Total Population", f"{int(pop):,}" if pop else "N/A")
+                with col3:
+                    st.metric("Avg Median Age", f"{result[2]:.1f}" if result[2] else "N/A")
+    
+    except Exception:
+        pass  # Silently fail if database query fails
