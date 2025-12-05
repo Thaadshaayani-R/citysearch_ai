@@ -159,7 +159,17 @@ def handle_query(query, classification, df_features, get_engine_func=None,
                 handle_lifestyle_query(query, city_name, classification, df_features, get_engine_func, city_list)
             else:
                 handle_sql_query(query, classification, df_features, get_engine_func, city_list)
+                
+        elif query_type == "filter":
+            handle_filter_query(query, classification, df_features, get_engine_func)
         
+        elif query_type == "similar_cities":
+            city_name = cities[0] if cities else None
+            if city_name:
+                handle_similar_cities_query(query, city_name, df_features, get_engine_func)
+            else:
+                handle_sql_query(query, classification, df_features, get_engine_func, city_list)
+                
         else:
             # Default fallback
             handle_sql_query(query, classification, df_features, get_engine_func, city_list)
@@ -1043,3 +1053,211 @@ def _show_fallback_data(df_features):
     st.markdown("### Available Data")
     if not df_features.empty:
         show_city_table(df_features.head(10), "Sample Cities", True)
+
+# =============================================================================
+# FILTER HANDLER
+# =============================================================================
+
+def handle_filter_query(query, classification, df_features, get_engine_func):
+    """
+    Handle filter queries like "cities with population > 1000000".
+    """
+    engine = get_engine_func()
+    
+    metric = classification.get("metric", "population")
+    filter_op = classification.get("filter_op", "gt")
+    filter_value = classification.get("filter_value", 0)
+    
+    # Build SQL based on filter operation
+    if filter_op == "gt":
+        op_sql = ">"
+        op_label = "greater than"
+    elif filter_op == "lt":
+        op_sql = "<"
+        op_label = "less than"
+    elif filter_op == "gte":
+        op_sql = ">="
+        op_label = "at least"
+    elif filter_op == "lte":
+        op_sql = "<="
+        op_label = "at most"
+    else:
+        op_sql = ">"
+        op_label = "greater than"
+    
+    sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE {metric} {op_sql} :value ORDER BY {metric} DESC")
+    
+    with engine.connect() as conn:
+        result = conn.execute(sql, {"value": filter_value})
+        df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    
+    if df.empty:
+        st.warning(f"No cities found with {metric.replace('_', ' ')} {op_label} {filter_value:,}")
+        return
+    
+    # Format the value for display
+    formatted_value = f"{filter_value:,}" if filter_value > 1000 else str(filter_value)
+    metric_display = metric.replace("_", " ").title()
+    
+    # Show count card
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        color: white;
+        text-align: center;
+    ">
+        <div style="font-size: 0.9rem; opacity: 0.9; margin-bottom: 0.5rem;">
+            Cities with {metric_display} {op_label} {formatted_value}
+        </div>
+        <div style="font-size: 3rem; font-weight: 700;">
+            {len(df)}
+        </div>
+        <div style="font-size: 0.85rem; opacity: 0.8;">cities found</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Show results table
+    show_city_table(df, f"Cities with {metric_display} {op_label} {formatted_value}", True)
+
+
+# =============================================================================
+# SIMILAR CITIES HANDLER
+# =============================================================================
+
+def handle_similar_cities_query(query, city_name, df_features, get_engine_func):
+    """
+    Handle queries like "cities similar to Chicago".
+    """
+    engine = get_engine_func()
+    
+    # First, get the reference city data
+    sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city) = LOWER(:city)")
+    with engine.connect() as conn:
+        result = conn.execute(sql, {"city": city_name}).fetchone()
+    
+    if not result:
+        st.warning(f"City '{city_name}' not found in our database.")
+        return
+    
+    ref_city = dict(result._mapping)
+    ref_pop = ref_city.get("population", 0)
+    ref_age = ref_city.get("median_age", 0)
+    ref_household = ref_city.get("avg_household_size", 0)
+    
+    # Show reference city card
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        color: white;
+    ">
+        <div style="font-size: 0.9rem; opacity: 0.9; margin-bottom: 0.5rem;">Reference City</div>
+        <div style="font-size: 1.8rem; font-weight: 700; margin-bottom: 0.5rem;">
+            {ref_city.get('city')}, {ref_city.get('state')}
+        </div>
+        <div style="display: flex; gap: 2rem; font-size: 0.9rem;">
+            <div>Population: {ref_pop:,}</div>
+            <div>Median Age: {ref_age}</div>
+            <div>Household: {ref_household:.2f}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Try semantic search first if available
+    if semantic_city_search:
+        try:
+            results = semantic_city_search(f"cities like {city_name}", top_k=11)
+            # Filter out the reference city
+            results = [(c, s) for c, s in results if c.lower() != city_name.lower()][:10]
+            
+            if results:
+                data = []
+                for c, s in results:
+                    sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE LOWER(city)=LOWER(:c) AND LOWER(state)=LOWER(:s)")
+                    with engine.connect() as conn:
+                        r = conn.execute(sql, {"c": c, "s": s}).fetchone()
+                        if r:
+                            data.append(dict(r._mapping))
+                
+                if data:
+                    st.markdown("### 🔍 Similar Cities (Semantic Match)")
+                    show_city_table(pd.DataFrame(data), f"Cities Similar to {city_name}", True)
+                    return
+        except Exception as e:
+            pass  # Fall back to demographic similarity
+    
+    # Fallback: Find cities with similar demographics
+    pop_range_low = ref_pop * 0.5
+    pop_range_high = ref_pop * 1.5
+    age_range_low = ref_age - 5
+    age_range_high = ref_age + 5
+    
+    sql = text(f"""
+        SELECT * FROM {DB_TABLE_NAME} 
+        WHERE population BETWEEN :pop_low AND :pop_high
+        AND median_age BETWEEN :age_low AND :age_high
+        AND LOWER(city) != LOWER(:city)
+        ORDER BY ABS(population - :ref_pop) + ABS(median_age - :ref_age) * 100000
+    """)
+    
+    with engine.connect() as conn:
+        result = conn.execute(sql, {
+            "pop_low": pop_range_low,
+            "pop_high": pop_range_high,
+            "age_low": age_range_low,
+            "age_high": age_range_high,
+            "city": city_name,
+            "ref_pop": ref_pop,
+            "ref_age": ref_age
+        })
+        df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    
+    if df.empty:
+        st.info(f"No cities found with similar demographics to {city_name}.")
+        return
+    
+    st.markdown("### 🔍 Similar Cities (Demographic Match)")
+    show_city_table(df.head(10), f"Cities Similar to {city_name}", True)
+    
+    # AI insight
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY"))
+        
+        similar_cities = df.head(5)['city'].tolist()
+        
+        prompt = f"""The user asked for cities similar to {city_name}.
+        
+        Reference: {city_name} has population {ref_pop:,}, median age {ref_age}, household size {ref_household:.2f}.
+        
+        Similar cities found: {', '.join(similar_cities)}
+        
+        Give 1-2 sentences explaining what these cities have in common with {city_name}.
+        Be concise."""
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=100
+        )
+        
+        st.markdown(f"""
+        <div style="
+            background: rgba(102, 126, 234, 0.1);
+            border-left: 4px solid #667eea;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        ">
+            <div style="font-size: 0.85rem; color: #667eea; margin-bottom: 0.5rem;">💡 Insight</div>
+            {response.choices[0].message.content.strip()}
+        </div>
+        """, unsafe_allow_html=True)
+        
+    except Exception:
+        pass
