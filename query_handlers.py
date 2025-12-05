@@ -7,6 +7,7 @@ Routes classified queries to appropriate core modules and display components.
 import streamlit as st
 import pandas as pd
 from sqlalchemy import text
+from typing import Optional
 
 from config import DB_TABLE_NAME
 from db_config import get_engine
