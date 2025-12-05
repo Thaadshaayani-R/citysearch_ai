@@ -357,7 +357,37 @@ Analyze the query and return JSON:
     "limit": number or null,
     "intent": "families" | "young_professionals" | "retirement" | "general",
     "comparison_type": "city_vs_city" | "state_vs_state" | null,
-    "is_city_related": true | false
+    "content": """You are a query classifier for a US cities database.
+
+The database has columns: city, state, population, median_age, avg_household_size, state_code
+
+Analyze the query and return JSON:
+{
+    "query_type": "single_city" | "single_state" | "city_list" | "superlative" | "comparison" | "ranking" | "aggregate" | "lifestyle" | "general_knowledge",
+    "cities": ["city names mentioned"],
+    "states": ["state names mentioned"],
+    "metric": "population" | "median_age" | "avg_household_size" | null,
+    "direction": "highest" | "lowest" | null,
+    "limit": number or null,
+    "intent": "families" | "young_professionals" | "retirement" | "general",
+    "comparison_type": "city_vs_city" | "state_vs_state" | null,
+    "is_city_related": true | false,
+    "needs_gpt_knowledge": true | false
+}
+
+IMPORTANT RULES:
+- is_city_related = TRUE for ANY question about US cities, states, demographics, living, moving, geography
+- is_city_related = TRUE for questions like "why is Texas big", "what makes NYC expensive", "tell me about California"
+- is_city_related = FALSE ONLY for completely unrelated topics (recipes, sports scores, math problems, etc.)
+- needs_gpt_knowledge = TRUE when the question requires general knowledge beyond database stats
+- query_type = "general_knowledge" for questions that need GPT knowledge (why, what makes, history, culture, etc.)
+
+Examples:
+- "Why is Texas so big?" → is_city_related: true, needs_gpt_knowledge: true, query_type: "general_knowledge", states: ["Texas"]
+- "What makes New York expensive?" → is_city_related: true, needs_gpt_knowledge: true, query_type: "general_knowledge", cities: ["New York"]
+- "Population of Denver" → is_city_related: true, needs_gpt_knowledge: false, query_type: "single_city"
+- "Best pizza recipe" → is_city_related: false
+- "Who won the Super Bowl?" → is_city_related: false"""
 }
 
 Classification rules:
@@ -459,6 +489,7 @@ def _map_query_type_to_mode(query_type: str, intent: str = None) -> str:
         "lifestyle": "lifestyle",
         "filter": "filter",
         "similar_cities": "similar_cities",
+        "general_knowledge": "general_knowledge",
     }
     return mapping.get(query_type, "sql")
 
