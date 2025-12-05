@@ -497,15 +497,30 @@ def _map_query_type_to_mode(query_type: str, intent: str = None) -> str:
 def is_city_related_query(query: str) -> bool:
     """
     Check if a query is related to US cities/states.
-    Used to filter out completely off-topic queries.
+    Returns TRUE for any geography, demographics, or location-related question.
     """
     city_keywords = [
-        "city", "cities", "town", "population", "state", "states",
-        "live", "living", "move", "moving", "best", "top", "largest",
-        "smallest", "compare", "vs", "versus", "family", "families",
-        "retire", "retirement", "young", "professional", "median age",
-        "household", "denver", "austin", "miami", "seattle", "chicago",
-        "texas", "california", "florida", "new york"
+        # Direct mentions
+        "city", "cities", "town", "state", "states", "county",
+        # Demographics
+        "population", "people", "residents", "median age", "household",
+        # Actions
+        "live", "living", "move", "moving", "relocate", "visit",
+        # Comparisons
+        "best", "top", "largest", "smallest", "biggest", "compare", "vs", "versus",
+        # Categories
+        "family", "families", "retire", "retirement", "young", "professional",
+        # Descriptive
+        "big", "small", "expensive", "cheap", "affordable", "safe", "dangerous",
+        # Questions about places
+        "why", "what makes", "tell me about", "how is", "history of",
+        # Common city names
+        "new york", "los angeles", "chicago", "houston", "phoenix", "philadelphia",
+        "san antonio", "san diego", "dallas", "austin", "miami", "seattle", "denver",
+        "boston", "atlanta", "detroit", "portland", "las vegas",
+        # Common state names
+        "texas", "california", "florida", "new york", "illinois", "pennsylvania",
+        "ohio", "georgia", "michigan", "arizona", "washington", "colorado"
     ]
     
     q_lower = query.lower()
