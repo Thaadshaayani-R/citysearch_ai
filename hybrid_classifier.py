@@ -302,13 +302,13 @@ def _check_high_confidence_patterns(q: str, original_query: str) -> dict:
             return _build_result("ranking", intent=intent, states=[state.title()])
     
     # -----------------------------------------------------------------
-    # Pattern: "total population of [STATE]"
+    # Pattern: "total population of [STATE]" or "total population of all cities in [STATE]"
     # -----------------------------------------------------------------
-    match = re.search(r"total\s+population\s+(?:of|in)\s+(.+?)(?:\?|$)", q)
+    match = re.search(r"(?:total|sum|combined)\s+population\s+(?:of\s+)?(?:all\s+)?(?:cities\s+)?(?:in|of)\s+(.+?)(?:\?|$)", q)
     if match:
         state = match.group(1).strip().rstrip("?.,!")
         if _is_state(state):
-            return _build_result("single_state", states=[state.title()], metric="population")
+            return _build_result("aggregate", states=[state.title()], metric="total_population")
     
     # -----------------------------------------------------------------
     # Pattern: "how many cities does [STATE] have"
