@@ -163,6 +163,9 @@ def handle_query(query, classification, df_features, get_engine_func=None,
                 
         elif query_type == "filter":
             handle_filter_query(query, classification, df_features, get_engine_func)
+
+        elif query_type == "filter_range":
+            handle_filter_range_query(query, classification, df_features, get_engine_func)
         
         elif query_type == "similar_cities":
             city_name = cities[0] if cities else None
@@ -1104,11 +1107,19 @@ def handle_filter_query(query, classification, df_features, get_engine_func):
         op_sql = ">"
         op_label = "greater than"
     
-    sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE {metric} {op_sql} :value ORDER BY {metric} DESC")
+    states = classification.get("states", [])
+    state_filter = states[0] if states else None
     
-    with engine.connect() as conn:
-        result = conn.execute(sql, {"value": filter_value})
-        df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    if state_filter:
+        sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE {metric} {op_sql} :value AND LOWER(state) = LOWER(:state) ORDER BY {metric} DESC")
+        with engine.connect() as conn:
+            result = conn.execute(sql, {"value": filter_value, "state": state_filter})
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    else:
+        sql = text(f"SELECT * FROM {DB_TABLE_NAME} WHERE {metric} {op_sql} :value ORDER BY {metric} DESC")
+        with engine.connect() as conn:
+            result = conn.execute(sql, {"value": filter_value})
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
     
     if df.empty:
         st.warning(f"No cities found with {metric.replace('_', ' ')} {op_label} {filter_value:,}")
@@ -1446,3 +1457,64 @@ def _show_related_database_info(cities, states):
     
     except Exception:
         pass  # Silently fail if database query fails
+
+def handle_filter_range_query(query, classification, df_features, get_engine_func):
+    """
+    Handle range filter queries like "cities with population between 100k and 300k".
+    """
+    engine = get_engine_func()
+    
+    metric = classification.get("metric", "population")
+    min_val = classification.get("filter_min", 0)
+    max_val = classification.get("filter_max", 999999999)
+    states = classification.get("states", [])
+    state_filter = states[0] if states else None
+    
+    metric_display = metric.replace("_", " ").title()
+    
+    # Build SQL
+    if state_filter:
+        sql = text(f"""
+            SELECT * FROM {DB_TABLE_NAME} 
+            WHERE {metric} BETWEEN :min_val AND :max_val 
+            AND LOWER(state) = LOWER(:state)
+            ORDER BY {metric} DESC
+        """)
+        with engine.connect() as conn:
+            result = conn.execute(sql, {"min_val": min_val, "max_val": max_val, "state": state_filter})
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    else:
+        sql = text(f"""
+            SELECT * FROM {DB_TABLE_NAME} 
+            WHERE {metric} BETWEEN :min_val AND :max_val 
+            ORDER BY {metric} DESC
+        """)
+        with engine.connect() as conn:
+            result = conn.execute(sql, {"min_val": min_val, "max_val": max_val})
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    
+    if df.empty:
+        st.warning(f"No cities found with {metric_display} between {min_val:,} and {max_val:,}")
+        return
+    
+    # Show count card
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        color: white;
+        text-align: center;
+    ">
+        <div style="font-size: 0.9rem; opacity: 0.9; margin-bottom: 0.5rem;">
+            Cities with {metric_display} between {min_val:,} and {max_val:,}
+        </div>
+        <div style="font-size: 3rem; font-weight: 700;">
+            {len(df)}
+        </div>
+        <div style="font-size: 0.85rem; opacity: 0.8;">cities found</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    show_city_table(df, f"Cities with {metric_display} {min_val:,} - {max_val:,}", True)
