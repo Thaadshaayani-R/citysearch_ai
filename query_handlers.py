@@ -159,8 +159,11 @@ def handle_query(query, classification, df_features, get_engine_func=None,
         elif query_type == "ranking":
             _route_ranking(query, intent, classification, df_features, get_engine_func, city_list)
         
+        # elif query_type == "aggregate":
+        #     handle_sql_query(query, classification, df_features, get_engine_func, city_list)
+
         elif query_type == "aggregate":
-            handle_sql_query(query, classification, df_features, get_engine_func, city_list)
+            handle_aggregate_query(query, classification, get_engine_func)
         
         elif query_type == "lifestyle":
             city_name = cities[0] if cities else None
