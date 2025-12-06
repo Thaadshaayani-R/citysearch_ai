@@ -523,7 +523,7 @@ def _show_top_cities_in_state(state_name, engine):
 # SUPERLATIVE HANDLER
 # =============================================================================
 
-def handle_superlative_query(query, metric_text, direction, get_engine_func, limit=5, states=None):
+def handle_superlative_query(query, metric_text, direction, get_engine_func, limit=10, states=None):
     """
     Handle superlative questions.
     
