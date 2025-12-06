@@ -192,7 +192,6 @@ def _check_high_confidence_patterns(q: str, original_query: str) -> dict:
 # -----------------------------------------------------------------
     # Pattern: "top N [metric] cities in [STATE]"
     # -----------------------------------------------------------------
-    # First check if state is mentioned
     match = re.search(r"top (\d+)\s+(?:most\s+)?(?:populated|largest|biggest)\s+cit(?:y|ies)?\s+(?:in|of)\s+(.+?)(?:\?|$)", q)
     if match:
         limit = int(match.group(1))
@@ -200,29 +199,141 @@ def _check_high_confidence_patterns(q: str, original_query: str) -> dict:
         if _is_state(state):
             return _build_result("superlative", metric="population", direction="highest", limit=limit, states=[state.title()])
     
-    # Without state filter
+    # Pattern: "top N cities in [STATE]" (without metric - default to population)
+    match = re.search(r"top (\d+)\s+cit(?:y|ies)\s+(?:in|of)\s+(.+?)(?:\?|$)", q)
+    if match:
+        limit = int(match.group(1))
+        state = match.group(2).strip().rstrip("?.,!")
+        if _is_state(state):
+            return _build_result("superlative", metric="population", direction="highest", limit=limit, states=[state.title()])
+    
+    # Pattern: "largest city in [STATE]" or "most populated city in [STATE]"
+    match = re.search(r"(?:largest|biggest|most populated)\s+cit(?:y|ies)\s+(?:in|of)\s+(.+?)(?:\?|$)", q)
+    if match:
+        state = match.group(1).strip().rstrip("?.,!")
+        if _is_state(state):
+            return _build_result("superlative", metric="population", direction="highest", limit=1, states=[state.title()])
+    
+    # Pattern: "smallest city in [STATE]" or "least populated city in [STATE]"
+    match = re.search(r"(?:smallest|least populated)\s+cit(?:y|ies)\s+(?:in|of)\s+(.+?)(?:\?|$)", q)
+    if match:
+        state = match.group(1).strip().rstrip("?.,!")
+        if _is_state(state):
+            return _build_result("superlative", metric="population", direction="lowest", limit=1, states=[state.title()])
+    
+    # Pattern: "highest/lowest [metric] cities" or "[metric] cities"
+    match = re.search(r"(?:highest|oldest)\s+(?:median\s+)?age\s+cit", q)
+    if match:
+        return _build_result("superlative", metric="median_age", direction="highest", limit=10)
+    
+    match = re.search(r"(?:lowest|youngest)\s+(?:median\s+)?age\s+cit", q)
+    if match:
+        return _build_result("superlative", metric="median_age", direction="lowest", limit=10)
+    
+    match = re.search(r"youngest\s+cit", q)
+    if match:
+        return _build_result("superlative", metric="median_age", direction="lowest", limit=10)
+    
+    match = re.search(r"oldest\s+cit", q)
+    if match:
+        return _build_result("superlative", metric="median_age", direction="highest", limit=10)
+    
+    # Pattern: "top N youngest/oldest cities"
+    match = re.search(r"top (\d+)\s+(?:youngest|lowest age)\s+cit", q)
+    if match:
+        limit = int(match.group(1))
+        return _build_result("superlative", metric="median_age", direction="lowest", limit=limit)
+    
+    match = re.search(r"top (\d+)\s+(?:oldest|highest age)\s+cit", q)
+    if match:
+        limit = int(match.group(1))
+        return _build_result("superlative", metric="median_age", direction="highest", limit=limit)
+    
+    # Pattern: "largest households" or "biggest household size"
+    match = re.search(r"(?:largest|biggest|highest)\s+(?:household|family)\s*(?:size)?", q)
+    if match:
+        return _build_result("superlative", metric="avg_household_size", direction="highest", limit=10)
+    
+    match = re.search(r"(?:smallest|lowest)\s+(?:household|family)\s*(?:size)?", q)
+    if match:
+        return _build_result("superlative", metric="avg_household_size", direction="lowest", limit=10)
+    
+    # Pattern: "lowest/highest population cities in [STATE]"
+    match = re.search(r"(?:lowest|smallest)\s+population\s+cit(?:y|ies)\s+(?:in|of)\s+(.+?)(?:\?|$)", q)
+    if match:
+        state = match.group(1).strip().rstrip("?.,!")
+        if _is_state(state):
+            return _build_result("superlative", metric="population", direction="lowest", limit=10, states=[state.title()])
+    
+    # Pattern: "top N [metric] cities" without state
     match = re.search(r"top (\d+)\s+(?:most\s+)?(?:populated|largest|biggest)\s+cit", q)
     if match:
         limit = int(match.group(1))
         return _build_result("superlative", metric="population", direction="highest", limit=limit)
     
-    match = re.search(r"top (\d+)\s+(?:smallest|least populated)\s+cit", q)
+    # -----------------------------------------------------------------
+    # Pattern: "best cities for [INTENT] in [STATE]"
+    # -----------------------------------------------------------------
+    match = re.search(r"best\s+cit(?:y|ies)\s+for\s+(.+?)\s+in\s+(.+?)(?:\?|$)", q)
     if match:
-        limit = int(match.group(1))
-        return _build_result("superlative", metric="population", direction="lowest", limit=limit)
+        intent_text = match.group(1).strip()
+        state = match.group(2).strip().rstrip("?.,!")
+        intent = _extract_intent(intent_text)
+        if _is_state(state) and intent:
+            return _build_result("ranking", intent=intent, states=[state.title()])
+    
+    # Pattern: "top cities for retirement in [STATE]"
+    match = re.search(r"top\s+cit(?:y|ies)\s+for\s+(.+?)\s+in\s+(.+?)(?:\?|$)", q)
+    if match:
+        intent_text = match.group(1).strip()
+        state = match.group(2).strip().rstrip("?.,!")
+        intent = _extract_intent(intent_text)
+        if _is_state(state) and intent:
+            return _build_result("ranking", intent=intent, states=[state.title()])
     
     # -----------------------------------------------------------------
-    # Pattern: "which city has highest/lowest [metric]"
+    # Pattern: "total population of [STATE]"
     # -----------------------------------------------------------------
-    match = re.search(r"(?:which|what) city (?:has|have) (?:the )?(?:highest|largest|most|biggest) (.+?)(?:\?|$)", q)
+    match = re.search(r"total\s+population\s+(?:of|in)\s+(.+?)(?:\?|$)", q)
     if match:
-        metric = _extract_metric(match.group(1))
-        return _build_result("superlative", metric=metric, direction="highest", limit=1)
+        state = match.group(1).strip().rstrip("?.,!")
+        if _is_state(state):
+            return _build_result("single_state", states=[state.title()], metric="population")
     
-    match = re.search(r"(?:which|what) city (?:has|have) (?:the )?(?:lowest|smallest|least) (.+?)(?:\?|$)", q)
+    # -----------------------------------------------------------------
+    # Pattern: "how many cities does [STATE] have"
+    # -----------------------------------------------------------------
+    match = re.search(r"how many cities (?:does|do)\s+(.+?)\s+have", q)
     if match:
-        metric = _extract_metric(match.group(1))
-        return _build_result("superlative", metric=metric, direction="lowest", limit=1)
+        state = match.group(1).strip().rstrip("?.,!")
+        if _is_state(state):
+            return _build_result("aggregate", states=[state.title()], metric="count")
+    
+    # -----------------------------------------------------------------
+    # Pattern: "cities with population between X and Y"
+    # -----------------------------------------------------------------
+    match = re.search(r"cities?\s+with\s+population\s+between\s+(\d[\d,k]*)\s+and\s+(\d[\d,k]*)", q)
+    if match:
+        min_val = _parse_number(match.group(1))
+        max_val = _parse_number(match.group(2))
+        return _build_result("filter_range", metric="population", filter_min=min_val, filter_max=max_val)
+    
+    # -----------------------------------------------------------------
+    # Pattern: "cities in [STATE] with [METRIC] > N"
+    # -----------------------------------------------------------------
+    match = re.search(r"cities?\s+in\s+(.+?)\s+with\s+(?:median\s+)?age\s*(?:>|greater than|over|above)\s*(\d+)", q)
+    if match:
+        state = match.group(1).strip()
+        threshold = int(match.group(2))
+        if _is_state(state):
+            return _build_result("filter", metric="median_age", filter_op="gt", filter_value=threshold, states=[state.title()])
+    
+    match = re.search(r"cities?\s+in\s+(.+?)\s+with\s+(?:household|family)\s*(?:size)?\s*(?:>|greater than|over|above)\s*(\d+\.?\d*)", q)
+    if match:
+        state = match.group(1).strip()
+        threshold = float(match.group(2))
+        if _is_state(state):
+            return _build_result("filter", metric="avg_household_size", filter_op="gt", filter_value=threshold, states=[state.title()])
     
     # -----------------------------------------------------------------
     # Pattern: "cities in [STATE]"
@@ -331,6 +442,31 @@ def _is_state(name: str) -> bool:
         "west virginia", "wisconsin", "wyoming"
     }
     return name.lower().strip() in us_states
+
+def _extract_intent(text: str) -> str:
+    """Extract intent from text like 'families', 'retirement', etc."""
+    text = text.lower()
+    
+    if any(w in text for w in ["family", "families", "kids", "children"]):
+        return "families"
+    if any(w in text for w in ["retire", "retirement", "senior", "seniors", "retiree"]):
+        return "retirement"
+    if any(w in text for w in ["young", "professional", "career", "millennial", "remote", "worker", "student"]):
+        return "young_professionals"
+    
+    return None
+
+
+def _parse_number(text: str) -> int:
+    """Parse numbers like '100k', '1,000,000', '500000'."""
+    text = text.lower().replace(",", "").strip()
+    
+    if text.endswith("k"):
+        return int(float(text[:-1]) * 1000)
+    if text.endswith("m"):
+        return int(float(text[:-1]) * 1000000)
+    
+    return int(text)
 
 
 # =============================================================================
@@ -482,6 +618,7 @@ def _map_query_type_to_mode(query_type: str, intent: str = None) -> str:
         "filter": "filter",
         "similar_cities": "similar_cities",
         "general_knowledge": "general_knowledge",
+        "filter_range": "filter_range",
     }
     return mapping.get(query_type, "sql")
 
