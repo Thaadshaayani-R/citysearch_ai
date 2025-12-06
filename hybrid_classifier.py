@@ -488,47 +488,115 @@ def _llm_classify(query: str) -> dict:
             model="gpt-4o-mini",
             messages=[{
                 "role": "system",
-                "content": """
-You are a query classifier for a US cities database.
+                "content": """You are a SQL query generator for a US cities database.
 
-The database has columns: city, state, population, median_age, avg_household_size, state_code.
+DATABASE SCHEMA:
+Table: dbo.cities
+Columns:
+  - city (VARCHAR): City name
+  - state (VARCHAR): Full state name (e.g., "California", "Texas")
+  - state_code (VARCHAR): 2-letter code (e.g., "CA", "TX")
+  - population (INT): City population
+  - median_age (FLOAT): Median age of residents
+  - avg_household_size (FLOAT): Average household size
 
-Analyze the query and return JSON:
+TASK: Analyze the user's query and return JSON with:
+1. Classification info
+2. A valid SQL Server query (use TOP instead of LIMIT)
+
+Return JSON:
 {
-    "query_type": "single_city" | "single_state" | "city_list" |
-                   "superlative" | "comparison" | "ranking" |
-                   "aggregate" | "lifestyle" | "general_knowledge",
-    "cities": ["city names mentioned"],
-    "states": ["state names mentioned"],
-    "metric": "population" | "median_age" | "avg_household_size" | null,
-    "direction": "highest" | "lowest" | null,
-    "limit": number or null,
-    "intent": "families" | "young_professionals" | "retirement" | "general",
-    "comparison_type": "city_vs_city" | "state_vs_state" | null,
-    "is_city_related": true | false,
-    "needs_gpt_knowledge": true | false
+    "query_type": "filter" | "superlative" | "aggregate" | "group_by" | "comparison" | "pattern_match" | "single_city" | "single_state" | "ranking" | "general_knowledge",
+    "sql": "SELECT ... FROM dbo.cities WHERE ...",
+    "cities": [],
+    "states": [],
+    "metric": null,
+    "direction": null,
+    "limit": null,
+    "intent": "general",
+    "is_city_related": true,
+    "needs_gpt_knowledge": false,
+    "explanation": "Brief explanation of what the query does"
 }
 
-IMPORTANT RULES:
-- is_city_related = true for any question involving US cities, states, demographics, living, moving, geography.
-- is_city_related = false only for completely unrelated topics (sports scores, recipes, math problems, etc.).
-- needs_gpt_knowledge = true when the answer requires general world knowledge outside database values
-  (why something happens, history, economics, culture, reasons).
-- query_type = "general_knowledge" for open-ended questions.
+SQL RULES:
+- Use TOP N instead of LIMIT (SQL Server syntax)
+- Table name is dbo.cities
+- Use LOWER() for case-insensitive string comparisons
+- For "between", use: column BETWEEN value1 AND value2
+- For "starting with", use: column LIKE 'prefix%'
+- For "contains", use: column LIKE '%word%'
+- Always include ORDER BY for ranked queries
+- For aggregates, use COUNT(*), SUM(), AVG()
+- For GROUP BY, include HAVING if filtering groups
 
 EXAMPLES:
-- "Why is Texas so big?" -> is_city_related: true, needs_gpt_knowledge: true, query_type: "general_knowledge", states: ["Texas"]
-- "Why is New York expensive?" -> is_city_related: true, needs_gpt_knowledge: true, query_type: "general_knowledge", cities: ["New York"]
-- "Population of Denver" -> single_city, metric: population
-- "Population of Texas" -> single_state, metric: population
-- "Which city has highest population" -> superlative, metric: population, direction: highest
-- "Top 5 most populated cities" -> superlative, metric: population, direction: highest, limit: 5
-- "Best cities for families" -> ranking, intent: families
-- "Compare Miami and Austin" -> comparison, comparison_type: city_vs_city
-- "How many cities in Texas" -> aggregate
-- "Life in Dallas" -> lifestyle
-- "Cities with population > 1 million" -> city_list
-"""
+Query: "cities with population > 500000"
+{
+    "query_type": "filter",
+    "sql": "SELECT * FROM dbo.cities WHERE population > 500000 ORDER BY population DESC",
+    "is_city_related": true
+}
+
+Query: "top 10 largest cities in Florida"
+{
+    "query_type": "superlative",
+    "sql": "SELECT TOP 10 * FROM dbo.cities WHERE LOWER(state) = 'florida' ORDER BY population DESC",
+    "states": ["Florida"],
+    "is_city_related": true
+}
+
+Query: "cities in Texas with median age < 35"
+{
+    "query_type": "filter",
+    "sql": "SELECT * FROM dbo.cities WHERE LOWER(state) = 'texas' AND median_age < 35 ORDER BY median_age ASC",
+    "states": ["Texas"],
+    "is_city_related": true
+}
+
+Query: "average median age in Ohio"
+{
+    "query_type": "aggregate",
+    "sql": "SELECT AVG(median_age) as avg_median_age, COUNT(*) as city_count FROM dbo.cities WHERE LOWER(state) = 'ohio'",
+    "states": ["Ohio"],
+    "is_city_related": true
+}
+
+Query: "city count for each state"
+{
+    "query_type": "group_by",
+    "sql": "SELECT state, COUNT(*) as city_count FROM dbo.cities GROUP BY state ORDER BY city_count DESC",
+    "is_city_related": true
+}
+
+Query: "cities starting with San"
+{
+    "query_type": "pattern_match",
+    "sql": "SELECT * FROM dbo.cities WHERE city LIKE 'San%' ORDER BY population DESC",
+    "is_city_related": true
+}
+
+Query: "cities where median age > 40 and population < 100000"
+{
+    "query_type": "filter",
+    "sql": "SELECT * FROM dbo.cities WHERE median_age > 40 AND population < 100000 ORDER BY population DESC",
+    "is_city_related": true
+}
+
+Query: "which is bigger Miami or Tampa"
+{
+    "query_type": "comparison",
+    "sql": "SELECT * FROM dbo.cities WHERE LOWER(city) IN ('miami', 'tampa') ORDER BY population DESC",
+    "cities": ["Miami", "Tampa"],
+    "is_city_related": true
+}
+
+Query: "states with more than 20 cities"
+{
+    "query_type": "group_by",
+    "sql": "SELECT state, COUNT(*) as city_count FROM dbo.cities GROUP BY state HAVING COUNT(*) > 20 ORDER BY city_count DESC",
+    "is_city_related": true
+}"""
             }, {
                 "role": "user",
                 "content": query
@@ -544,6 +612,14 @@ EXAMPLES:
             result.get("query_type", "city_list"),
             result.get("intent")
         )
+        
+        # Validate SQL exists
+        if "sql" in result and result["sql"]:
+            result["has_sql"] = True
+        else:
+            result["has_sql"] = False
+        
+        return result
         
         return result
         
@@ -619,6 +695,10 @@ def _map_query_type_to_mode(query_type: str, intent: str = None) -> str:
         "similar_cities": "similar_cities",
         "general_knowledge": "general_knowledge",
         "filter_range": "filter_range",
+        "filter": "llm_sql",
+        "group_by": "llm_sql",
+        "pattern_match": "llm_sql",
+        "aggregate": "llm_sql",
     }
     return mapping.get(query_type, "sql")
 
