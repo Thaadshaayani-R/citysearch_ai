@@ -551,6 +551,14 @@ Query: "top 10 largest cities in Florida"
     "is_city_related": true
 }
 
+Query: "Show cities sorted by population per household size"
+{
+    "query_type": "filter",
+    "sql": "SELECT *, (population / avg_household_size) as pop_per_household FROM dbo.cities ORDER BY pop_per_household DESC",
+    "is_city_related": true,
+    "explanation": "Calculated derived metric: population divided by household size"
+}
+
 Query: "cities in Texas with median age < 35"
 {
     "query_type": "filter",
