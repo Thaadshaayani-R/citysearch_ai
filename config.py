@@ -100,16 +100,19 @@ PROTECTED_WORDS = {
     "compare", "comparison", "versus", "between", "which", "what", "where",
     "city", "cities", "state", "states", "country", "countries",
     "population", "median", "average", "household", "size", "age",
+    "highest", "lowest", "largest", "smallest", "biggest", "youngest", "oldest",
     
     # Demographics
     "young", "old", "older", "younger", "family", "families", "senior", "seniors",
     "professional", "professionals", "student", "students", "retired", "retiree",
     "retirement", "children", "kids", "adults", "people", "person",
+    "remote", "worker", "workers", "millennials", "gen-z", "boomers",
     
     # Descriptors
     "large", "small", "big", "little", "high", "low", "cheap", "expensive",
     "affordable", "safe", "dangerous", "friendly", "beautiful", "nice",
     "growing", "declining", "urban", "rural", "suburban", "coastal",
+    "populated", "dense", "crowded", "spacious",
     
     # Weather/Climate
     "weather", "climate", "warm", "cold", "hot", "cool", "sunny", "rainy",
@@ -132,6 +135,7 @@ PROTECTED_WORDS = {
     "how", "many", "much", "more", "less", "than", "that", "this",
     "are", "is", "was", "were", "been", "being", "have", "has", "had",
     "all", "any", "some", "every", "each", "both", "other", "another",
+    "does", "total", "number", "count",
 }
 
 # -------------------------------------------------
