@@ -594,7 +594,7 @@ def _display_superlative_card(query, df, metric_column, direction):
     value = top.get(metric_column, "N/A")
     formatted_value = _format_metric_value(value)
     
-metric_display = metric_column.replace("_", " ").title()
+    metric_display = metric_column.replace("_", " ").title()
     rank_label = f"{'Highest' if direction == 'highest' else 'Lowest'} {metric_display}"
     
     # Add state to label if filtered
