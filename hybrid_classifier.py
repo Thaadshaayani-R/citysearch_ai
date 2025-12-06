@@ -348,28 +348,28 @@ def _check_high_confidence_patterns(q: str, original_query: str) -> dict:
     # Pattern: "cities with population > N" (handles >, >=, greater than, more than, etc.)
     # -----------------------------------------------------------------
     # Pattern 1: "cities with population > 1000000" or "population > 1000000"
-    match = re.search(r"population\s*(?:>|>=)\s*(\d[\d,]*)", q)
-    if match:
-        threshold = int(match.group(1).replace(",", ""))
-        return _build_result("filter", metric="population", filter_op="gt", filter_value=threshold)
+    # match = re.search(r"population\s*(?:>|>=)\s*(\d[\d,]*)", q)
+    # if match:
+    #     threshold = int(match.group(1).replace(",", ""))
+    #     return _build_result("filter", metric="population", filter_op="gt", filter_value=threshold)
     
-    # Pattern 2: "cities with population greater than 1000000"
-    match = re.search(r"population\s+(?:greater than|more than|over|above)\s+(\d[\d,]*)", q)
-    if match:
-        threshold = int(match.group(1).replace(",", ""))
-        return _build_result("filter", metric="population", filter_op="gt", filter_value=threshold)
+    # # Pattern 2: "cities with population greater than 1000000"
+    # match = re.search(r"population\s+(?:greater than|more than|over|above)\s+(\d[\d,]*)", q)
+    # if match:
+    #     threshold = int(match.group(1).replace(",", ""))
+    #     return _build_result("filter", metric="population", filter_op="gt", filter_value=threshold)
     
-    # Pattern 3: "cities with population < 100000"
-    match = re.search(r"population\s*(?:<|<=)\s*(\d[\d,]*)", q)
-    if match:
-        threshold = int(match.group(1).replace(",", ""))
-        return _build_result("filter", metric="population", filter_op="lt", filter_value=threshold)
+    # # Pattern 3: "cities with population < 100000"
+    # match = re.search(r"population\s*(?:<|<=)\s*(\d[\d,]*)", q)
+    # if match:
+    #     threshold = int(match.group(1).replace(",", ""))
+    #     return _build_result("filter", metric="population", filter_op="lt", filter_value=threshold)
     
-    # Pattern 4: "cities with population less than 100000"
-    match = re.search(r"population\s+(?:less than|under|below)\s+(\d[\d,]*)", q)
-    if match:
-        threshold = int(match.group(1).replace(",", ""))
-        return _build_result("filter", metric="population", filter_op="lt", filter_value=threshold)
+    # # Pattern 4: "cities with population less than 100000"
+    # match = re.search(r"population\s+(?:less than|under|below)\s+(\d[\d,]*)", q)
+    # if match:
+    #     threshold = int(match.group(1).replace(",", ""))
+    #     return _build_result("filter", metric="population", filter_op="lt", filter_value=threshold)
     # -----------------------------------------------------------------
     # Pattern: "population > N" without "cities with"
     # -----------------------------------------------------------------
@@ -409,6 +409,11 @@ def _build_result(query_type: str, **kwargs) -> dict:
         "comparison_type": kwargs.get("comparison_type"),
         "is_city_related": True,
         "response_type": query_type,
+        # Filter-specific fields
+        "filter_op": kwargs.get("filter_op"),
+        "filter_value": kwargs.get("filter_value"),
+        "filter_min": kwargs.get("filter_min"),
+        "filter_max": kwargs.get("filter_max"),
     }
     return result
 
