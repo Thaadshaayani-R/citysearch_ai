@@ -633,9 +633,40 @@ def _display_superlative_card(query, df, metric_column, direction):
     </div>
     """, unsafe_allow_html=True)
     
-    # Runners up
-    if len(df) > 1:
-        _display_runners_up(df.iloc[1:5], metric_column)
+    # If limit > 1, show as table instead of card
+    if limit > 1:
+        # Show count header
+        state_label = f" in {states[0]}" if states else ""
+        metric_label = metric_column.replace("_", " ").title()
+        direction_label = "Highest" if direction == "highest" else "Lowest"
+        
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            color: white;
+            text-align: center;
+        ">
+            <div style="font-size: 0.9rem; opacity: 0.9; margin-bottom: 0.5rem;">
+                🏆 Top {limit} {direction_label} {metric_label}{state_label}
+            </div>
+            <div style="font-size: 2.5rem; font-weight: 700;">
+                {len(df)} cities
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Show full table
+        show_city_table(df, f"Top {limit} Cities by {metric_label}", True)
+    else:
+        # Single result - show card format
+        _display_superlative_card(df.iloc[0], metric_column, direction, query)
+        
+        # Show runners up (for single queries like "largest city")
+        if len(df) > 1:
+            _display_runners_up(df.iloc[1:5], metric_column)
     
     # AI insight
     _generate_superlative_insight(query, city, state, direction, metric_display, formatted_value)
