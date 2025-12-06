@@ -145,13 +145,13 @@ def handle_query(query, classification, df_features, get_engine_func=None,
         
         elif query_type == "single_state":
             _route_single_state(query, states, metric, classification, df_features, get_engine_func, city_list)
-        
-        elif query_type == "superlative":
-            handle_superlative_query(query, metric or "population", direction or "highest", get_engine_func, limit, states)
 
         elif query_type == "superlative":
             sup_limit = classification.get("limit", 10) or 10
             handle_superlative_query(query, metric or "population", direction or "highest", get_engine_func, sup_limit, states)
+        
+        elif query_type == "superlative":
+            handle_superlative_query(query, metric or "population", direction or "highest", get_engine_func, limit, states)
         
         elif query_type == "comparison":
             handle_comparison(query, classification, df_features, get_engine_func, city_list)
