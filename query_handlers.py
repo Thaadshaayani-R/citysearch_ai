@@ -16,13 +16,14 @@ Query Types Supported:
     - lifestyle: "Life in Dallas"
     - city_list: Default fallback
 """
-
+import re
 import streamlit as st
 import pandas as pd
 from sqlalchemy import text
 
 from config import DB_TABLE_NAME
 from db_config import get_engine
+
 
 # =============================================================================
 # SAFE IMPORTS WITH FALLBACKS
@@ -142,7 +143,7 @@ def handle_query(query, classification, df_features, get_engine_func=None,
             _route_single_state(query, states, metric, classification, df_features, get_engine_func, city_list)
         
         elif query_type == "superlative":
-            handle_superlative_query(query, metric or "population", direction or "highest", get_engine_func, limit)
+            handle_superlative_query(query, metric or "population", direction or "highest", get_engine_func, limit, states)
         
         elif query_type == "comparison":
             handle_comparison(query, classification, df_features, get_engine_func, city_list)
@@ -522,7 +523,7 @@ def _show_top_cities_in_state(state_name, engine):
 # SUPERLATIVE HANDLER
 # =============================================================================
 
-def handle_superlative_query(query, metric_text, direction, get_engine_func, limit=5):
+def handle_superlative_query(query, metric_text, direction, get_engine_func, limit=5, states=None):
     """
     Handle superlative questions.
     
@@ -537,11 +538,19 @@ def handle_superlative_query(query, metric_text, direction, get_engine_func, lim
     metric_column = _map_metric_to_column(metric_text)
     order = "DESC" if direction == "highest" else "ASC"
     
-    # Query database
-    sql = text(f"SELECT TOP {limit} * FROM {DB_TABLE_NAME} ORDER BY {metric_column} {order}")
-    with engine.connect() as conn:
-        result = conn.execute(sql)
-        df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    # Query database (with optional state filter)
+    state_filter = states[0] if states else None
+    
+    if state_filter:
+        sql = text(f"SELECT TOP {limit} * FROM {DB_TABLE_NAME} WHERE LOWER(state) = LOWER(:state) ORDER BY {metric_column} {order}")
+        with engine.connect() as conn:
+            result = conn.execute(sql, {"state": state_filter})
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    else:
+        sql = text(f"SELECT TOP {limit} * FROM {DB_TABLE_NAME} ORDER BY {metric_column} {order}")
+        with engine.connect() as conn:
+            result = conn.execute(sql)
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
     
     if df.empty:
         st.warning("No results found.")
@@ -585,8 +594,15 @@ def _display_superlative_card(query, df, metric_column, direction):
     value = top.get(metric_column, "N/A")
     formatted_value = _format_metric_value(value)
     
-    metric_display = metric_column.replace("_", " ").title()
+metric_display = metric_column.replace("_", " ").title()
     rank_label = f"{'Highest' if direction == 'highest' else 'Lowest'} {metric_display}"
+    
+    # Add state to label if filtered
+    # Extract state from query if present
+    state_match = re.search(r"\bin\s+([A-Za-z\s]+?)(?:\?|$)", query.lower())
+    if state_match:
+        state_name = state_match.group(1).strip().title()
+        rank_label = f"{rank_label} in {state_name}"
     
     # Main card
     st.markdown(f"""
