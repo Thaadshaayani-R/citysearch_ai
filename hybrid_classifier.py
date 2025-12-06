@@ -122,6 +122,16 @@ def _check_high_confidence_patterns(q: str, original_query: str) -> dict:
         - "best city for families/retirement/young professionals"
         - "population of [CITY/STATE]"
     """
+
+    # -----------------------------------------------------------------
+    # SKIP PATTERN MATCHING for complex queries - let LLM handle
+    # -----------------------------------------------------------------
+    complex_indicators = [
+        " and ", " or ", "between", "sorted by", "ordered by",
+        "per ", "divided by", "ratio", "average of", "sum of"
+    ]
+    if any(indicator in q for indicator in complex_indicators):
+        return None  # Let LLM handle complex queries
     
     # -----------------------------------------------------------------
     # Pattern: "how many cities in [STATE]"
@@ -712,6 +722,7 @@ def _map_query_type_to_mode(query_type: str, intent: str = None) -> str:
         "group_by": "llm_sql",
         "pattern_match": "llm_sql",
         "aggregate": "llm_sql",
+        "aggregate": "aggregate",
     }
     return mapping.get(query_type, "sql")
 
