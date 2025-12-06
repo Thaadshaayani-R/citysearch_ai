@@ -148,6 +148,10 @@ def handle_query(query, classification, df_features, get_engine_func=None,
         
         elif query_type == "superlative":
             handle_superlative_query(query, metric or "population", direction or "highest", get_engine_func, limit, states)
+
+        elif query_type == "superlative":
+            sup_limit = classification.get("limit", 10) or 10
+            handle_superlative_query(query, metric or "population", direction or "highest", get_engine_func, sup_limit, states)
         
         elif query_type == "comparison":
             handle_comparison(query, classification, df_features, get_engine_func, city_list)
@@ -1731,3 +1735,133 @@ def _display_filter_result(df, query, classification):
     
     # Show table
     show_city_table(df, "Results", True)
+
+# =============================================================================
+# AGGREGATE HANDLER
+# =============================================================================
+
+def handle_aggregate_query(query, classification, get_engine_func):
+    """
+    Handle aggregate queries like:
+    - "total population of Texas"
+    - "how many cities in California"
+    - "average median age in Ohio"
+    """
+    engine = get_engine_func()
+    
+    states = classification.get("states", [])
+    metric = classification.get("metric", "count")
+    state_filter = states[0] if states else None
+    
+    try:
+        if metric == "total_population":
+            if state_filter:
+                sql = text(f"SELECT SUM(population) as total_population, COUNT(*) as city_count FROM {DB_TABLE_NAME} WHERE LOWER(state) = LOWER(:state)")
+                with engine.connect() as conn:
+                    result = conn.execute(sql, {"state": state_filter}).fetchone()
+            else:
+                sql = text(f"SELECT SUM(population) as total_population, COUNT(*) as city_count FROM {DB_TABLE_NAME}")
+                with engine.connect() as conn:
+                    result = conn.execute(sql).fetchone()
+            
+            if result:
+                total_pop = result[0] or 0
+                city_count = result[1] or 0
+                
+                state_label = f" in {state_filter}" if state_filter else ""
+                
+                st.markdown(f"""
+                <div style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    border-radius: 16px;
+                    padding: 1.5rem;
+                    margin-bottom: 1.5rem;
+                    color: white;
+                    text-align: center;
+                ">
+                    <div style="font-size: 0.9rem; opacity: 0.9; margin-bottom: 0.5rem;">
+                        📊 Total Population{state_label}
+                    </div>
+                    <div style="font-size: 3rem; font-weight: 700;">
+                        {total_pop:,}
+                    </div>
+                    <div style="font-size: 0.85rem; opacity: 0.8; margin-top: 0.5rem;">
+                        across {city_count} cities
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        elif metric == "count":
+            if state_filter:
+                sql = text(f"SELECT COUNT(*) as city_count FROM {DB_TABLE_NAME} WHERE LOWER(state) = LOWER(:state)")
+                with engine.connect() as conn:
+                    result = conn.execute(sql, {"state": state_filter}).fetchone()
+            else:
+                sql = text(f"SELECT COUNT(*) as city_count FROM {DB_TABLE_NAME}")
+                with engine.connect() as conn:
+                    result = conn.execute(sql).fetchone()
+            
+            if result:
+                city_count = result[0] or 0
+                state_label = f" in {state_filter}" if state_filter else ""
+                
+                st.markdown(f"""
+                <div style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    border-radius: 16px;
+                    padding: 1.5rem;
+                    margin-bottom: 1.5rem;
+                    color: white;
+                    text-align: center;
+                ">
+                    <div style="font-size: 0.9rem; opacity: 0.9; margin-bottom: 0.5rem;">
+                        🏙️ Cities{state_label}
+                    </div>
+                    <div style="font-size: 3rem; font-weight: 700;">
+                        {city_count}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        elif metric in ["average_age", "avg_median_age"]:
+            if state_filter:
+                sql = text(f"SELECT AVG(median_age) as avg_age, COUNT(*) as city_count FROM {DB_TABLE_NAME} WHERE LOWER(state) = LOWER(:state)")
+                with engine.connect() as conn:
+                    result = conn.execute(sql, {"state": state_filter}).fetchone()
+            else:
+                sql = text(f"SELECT AVG(median_age) as avg_age, COUNT(*) as city_count FROM {DB_TABLE_NAME}")
+                with engine.connect() as conn:
+                    result = conn.execute(sql).fetchone()
+            
+            if result:
+                avg_age = result[0] or 0
+                city_count = result[1] or 0
+                state_label = f" in {state_filter}" if state_filter else ""
+                
+                st.markdown(f"""
+                <div style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    border-radius: 16px;
+                    padding: 1.5rem;
+                    margin-bottom: 1.5rem;
+                    color: white;
+                    text-align: center;
+                ">
+                    <div style="font-size: 0.9rem; opacity: 0.9; margin-bottom: 0.5rem;">
+                        📊 Average Median Age{state_label}
+                    </div>
+                    <div style="font-size: 3rem; font-weight: 700;">
+                        {avg_age:.1f}
+                    </div>
+                    <div style="font-size: 0.85rem; opacity: 0.8; margin-top: 0.5rem;">
+                        across {city_count} cities
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        else:
+            # Default to count
+            handle_sql_query(query, classification, None, get_engine_func, None)
+    
+    except Exception as e:
+        st.error(f"Error processing aggregate query: {str(e)}")
