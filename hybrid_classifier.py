@@ -189,9 +189,18 @@ def _check_high_confidence_patterns(q: str, original_query: str) -> dict:
         if any(w in q for w in ["young professional", "young professionals", "career", "millennials"]):
             return _build_result("ranking", intent="young_professionals")
     
+# -----------------------------------------------------------------
+    # Pattern: "top N [metric] cities in [STATE]"
     # -----------------------------------------------------------------
-    # Pattern: "top N [metric] cities"
-    # -----------------------------------------------------------------
+    # First check if state is mentioned
+    match = re.search(r"top (\d+)\s+(?:most\s+)?(?:populated|largest|biggest)\s+cit(?:y|ies)?\s+(?:in|of)\s+(.+?)(?:\?|$)", q)
+    if match:
+        limit = int(match.group(1))
+        state = match.group(2).strip().rstrip("?.,!")
+        if _is_state(state):
+            return _build_result("superlative", metric="population", direction="highest", limit=limit, states=[state.title()])
+    
+    # Without state filter
     match = re.search(r"top (\d+)\s+(?:most\s+)?(?:populated|largest|biggest)\s+cit", q)
     if match:
         limit = int(match.group(1))
