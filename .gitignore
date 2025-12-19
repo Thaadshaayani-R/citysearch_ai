@@ -1,0 +1,61 @@
+
+# ENVIRONMENT / SECRETS
+.env
+venv/
+streamlit_secrets.toml
+.streamlit/* 
+!.streamlit/secrets.toml
+
+
+# PYTHON CACHE
+
+__pycache__/
+*.pyc
+*.pyo
+
+
+# OS / EDITOR FILES
+
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+
+# LOGS
+
+*.log
+logs/
+
+
+# DATABASE + SQL FILES
+
+database/
+database/Migrated Scripts/
+*.sql
+
+# DATA FILES
+
+*.csv
+
+# MODELS 
+
+# KEEP these folders (DO NOT ignore them)
+# mlops/registry/
+# models/
+
+# Allow model files (CRITICAL for Streamlit)
+!mlops/registry/*.pkl
+!mlops/registry/*.json
+!models/*.pkl
+
+# Only ignore temporary model outputs
+*.tmp
+*.bak
+
+
+# OTHER
+
+big.txt
+
+
