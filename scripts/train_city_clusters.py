@@ -12,9 +12,9 @@ from db_config import get_engine
 MODEL_DIR = os.path.join(os.getcwd(), "models")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-# ------------------------------------------------------
+
 # LOAD CITY DATA
-# ------------------------------------------------------
+
 def load_data():
     engine = get_engine()
     with engine.begin() as conn:
@@ -27,9 +27,9 @@ def load_data():
         )
     return df
 
-# ------------------------------------------------------
+
 # TRAIN CLUSTERS
-# ------------------------------------------------------
+
 def train_clusters():
     df = load_data()
 
