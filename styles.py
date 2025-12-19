@@ -1,15 +1,7 @@
-"""
-CitySearch AI - CSS Styles
-==========================
-All custom CSS styling for the application.
-Uses consistent dark theme styling.
-"""
-
+# styles.py
 
 def get_theme_colors(theme: str = "dark") -> dict:
-    """Get color palette - returns dark theme colors for consistency."""
-    
-    # Always return dark theme colors for consistent design
+    """Get color palette based on theme."""
     return {
         "bg_main": "#0f1419",
         "bg_card": "#1a202c",
@@ -32,6 +24,26 @@ def get_custom_css(theme: str = "dark") -> str:
     
     return f"""
     <style>
+    /* Force dark theme globally */
+    :root {{
+        color-scheme: dark !important;
+    }}
+    
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
+        background-color: #0f1419 !important;
+        color: #ffffff !important;
+    }}
+    
+    .stApp {{
+        background-color: #0f1419 !important;
+        color: #ffffff !important;
+    }}
+    
+    /* Override any light mode text colors */
+    .stMarkdown, .stText, p, span, div {{
+        color: {colors['text_primary']} !important;
+    }}
+    
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
     
     * {{
@@ -43,74 +55,66 @@ def get_custom_css(theme: str = "dark") -> str:
         padding: 1rem 2rem;
     }}
     
-    /* Remove Streamlit's global top padding */
+    /* Remove default top padding */
     .css-18e3th9 {{
         padding-top: 0 !important;
         margin-top: 3rem !important;
     }}
 
-    /* Remove padding from main content block */
     .block-container {{
         padding-top: 0rem !important;
         margin-top: 3rem !important;
+        background-color: #0f1419 !important;
     }}
     
-    /* Make "Choose view", "Search", "MLOps Dashboard" smaller */
+    /* Sidebar radio buttons */
     [data-testid="stSidebar"] label {{
         font-size: 0.2rem !important;
         line-height: 1.1 !important;
     }}
 
-    /* Tighten spacing between the two radio options */
     [data-testid="stSidebar"] div[role="radiogroup"] {{
         row-gap: 0.2rem !important;
         margin-bottom: -0.5rem !important;
     }}
 
-    /* Shrink the radio circle a bit */
     [data-testid="stSidebar"] input[type="radio"] {{
         transform: scale(0.8) !important;
     }}
     
-    /* Target the clear button */
+    /* Clear button styling */
     div[data-testid="stButton"] button:has(p:contains("✕")) {{
         background: rgba(255, 255, 255, 0.04) !important;
         border: none !important;
         border-radius: 999px !important;
-
         width: 36px !important;
         height: 36px !important;
         min-height: 36px !important;
-
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
-
-        color: #9ca3af !important; /* soft gray */
+        color: #9ca3af !important;
         font-size: 18px !important;
         font-weight: 400 !important;
-
         transition: all 0.2s ease-in-out !important;
     }}
 
-    /* Hover effect */
     div[data-testid="stButton"] button:has(p:contains("✕")):hover {{
-        background: rgba(239, 68, 68, 0.12) !important; /* soft red */
+        background: rgba(239, 68, 68, 0.12) !important;
         color: #ef4444 !important;
         transform: scale(1.05);
     }}
 
-    /* Active (click) */
     div[data-testid="stButton"] button:has(p:contains("✕")):active {{
         transform: scale(0.95);
     }}
 
-    /* Remove focus outline */
     div[data-testid="stButton"] button:has(p:contains("✕")):focus {{
         outline: none !important;
         box-shadow: none !important;
     }}
 
+    /* Hero section */
     .hero-section {{
         background: linear-gradient(135deg, {colors['gradient_start']} 0%, {colors['gradient_end']} 100%);
         padding: 1rem 1.5rem;
@@ -120,7 +124,7 @@ def get_custom_css(theme: str = "dark") -> str:
         border: 1px solid rgba(255, 255, 255, 0.1);
     }}
     
-    /* Force Quick Example to stay on ONE LINE */
+    /* Sidebar quick example buttons */
     [data-testid="stSidebar"] .stButton>button {{
         font-size: 0.55rem !important;
         padding: 0.4rem 0.6rem !important;
@@ -133,21 +137,18 @@ def get_custom_css(theme: str = "dark") -> str:
         align-items: center !important;
     }}
 
-    /* Also target the inner div */
     [data-testid="stSidebar"] .stButton>button > div {{
         font-size: 0.55rem !important;
         white-space: nowrap !important;
         text-align: left !important;
     }}
 
-    /* Also target the inner span */
     [data-testid="stSidebar"] .stButton>button span {{
         font-size: 0.55rem !important;
         white-space: nowrap !important;
         text-align: left !important;
     }}
     
-    /* Reduce spacing between cards */
     [data-testid="stSidebar"] .stButton {{
         margin-bottom: -0.6rem !important;
     }}
@@ -168,6 +169,7 @@ def get_custom_css(theme: str = "dark") -> str:
         max-width: 1000px;
     }}
     
+    /* Data and SQL containers */
     .data-container {{
         background-color: {colors['bg_card']};
         padding: 1.25rem;
@@ -185,6 +187,7 @@ def get_custom_css(theme: str = "dark") -> str:
         border: 1px solid {colors['border_color']};
     }}
     
+    /* Metric cards */
     .metric-card {{
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 2rem;
@@ -226,7 +229,7 @@ def get_custom_css(theme: str = "dark") -> str:
         margin-top: 0.25rem;
     }}
 
-    /* --- Optimized Result Card --- */
+    /* Result cards */
     .result-card {{
         background: linear-gradient(135deg, {colors['accent_gradient_start']} 0%, {colors['accent_gradient_end']} 100%);
         padding: 1rem 1.25rem;
@@ -237,7 +240,6 @@ def get_custom_css(theme: str = "dark") -> str:
         color: #ffffff;
     }}
 
-    /* Title (left side) */
     .result-card-title {{
         font-size: 1rem;
         font-weight: 600;
@@ -245,7 +247,6 @@ def get_custom_css(theme: str = "dark") -> str:
         color: #f1f1f1;
     }}
 
-    /* Metric label (TOTAL_CITIES) */
     .result-card-subtitle {{
         font-size: 0.8rem; 
         opacity: 0.9;
@@ -254,13 +255,13 @@ def get_custom_css(theme: str = "dark") -> str:
         text-transform: uppercase;
     }}
 
-    /* Value (57) */
     .result-card-value {{
         font-size: 1.8rem;
         font-weight: 800;
         color: #ffffff;
     }}
 
+    /* Insight cards */
     .insight-card {{
         background: linear-gradient(135deg, {colors['accent_gradient_start']} 0%, {colors['accent_gradient_end']} 100%);
         padding: 1.5rem;
@@ -289,14 +290,11 @@ def get_custom_css(theme: str = "dark") -> str:
     
     .insight-text {{
         font-size: 0.95rem;
-        color: rgba(255, 255, 255, 0.95);
+        color: rgba(255, 255, 255, 0.95) !important;
         line-height: 1.6;
     }}
     
-    /* =============================================================================
-       PREMIUM INSIGHT CARDS
-       ============================================================================= */
-    
+    /* Premium insight cards */
     .insight-card-premium {{
         background: linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.08) 100%);
         border-left: 4px solid #667eea;
@@ -321,16 +319,20 @@ def get_custom_css(theme: str = "dark") -> str:
     
     .insight-card-premium .insight-label {{
         font-size: 0.7rem;
-        color: #a78bfa;
+        color: #a78bfa !important;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.12em;
     }}
     
     .insight-card-premium .insight-content {{
-        color: #e2e8f0;
+        color: #e2e8f0 !important;
         line-height: 1.7;
         font-size: 0.95rem;
+    }}
+    
+    .insight-card-premium .insight-content p {{
+        color: #e2e8f0 !important;
     }}
     
     .insight-card-premium .insight-footer {{
@@ -338,9 +340,10 @@ def get_custom_css(theme: str = "dark") -> str:
         padding-top: 0.75rem;
         border-top: 1px solid rgba(102, 126, 234, 0.2);
         font-size: 0.75rem;
-        color: #a0aec0;
+        color: #a0aec0 !important;
     }}
     
+    /* Lifestyle card */
     .lifestyle-card {{
         background: linear-gradient(135deg, {colors['accent_gradient_start']} 0%, {colors['accent_gradient_end']} 100%);
         padding: 1.5rem;
@@ -350,6 +353,7 @@ def get_custom_css(theme: str = "dark") -> str:
         border: 1px solid rgba(255, 255, 255, 0.1);
     }}
     
+    /* Section headers */
     .section-header {{
         font-size: 1.1rem;
         font-weight: 700;
@@ -360,6 +364,7 @@ def get_custom_css(theme: str = "dark") -> str:
         letter-spacing: -0.01em;
     }}
     
+    /* Main buttons */
     .stButton>button {{
         background: linear-gradient(135deg, {colors['accent_gradient_start']} 0%, {colors['accent_gradient_end']} 100%);
         color: white;
@@ -378,6 +383,7 @@ def get_custom_css(theme: str = "dark") -> str:
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }}
     
+    /* Sidebar buttons */
     .sidebar .stButton>button {{
         background: {colors['bg_card']};
         color: {colors['text_secondary']};
@@ -391,32 +397,35 @@ def get_custom_css(theme: str = "dark") -> str:
         background: {colors['border_color']};
     }}
     
+    /* Metrics */
     div[data-testid="stMetricValue"] {{
         font-size: 1.4rem;
         font-weight: 800;
-        color: {colors['text_primary']};
+        color: {colors['text_primary']} !important;
     }}
     
     div[data-testid="stMetricLabel"] {{
         font-size: 0.7rem;
-        color: {colors['text_muted']};
+        color: {colors['text_muted']} !important;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.08em;
     }}
     
+    /* Sidebar */
     [data-testid="stSidebar"] {{
-        background-color: {colors['bg_card']};
+        background-color: {colors['bg_card']} !important;
         padding: 1rem;
     }}
     
     [data-testid="stSidebar"] .stMarkdown {{
-        color: {colors['text_secondary']};
+        color: {colors['text_secondary']} !important;
     }}
     
+    /* Text inputs */
     .stTextInput input {{
-        background-color: {colors['bg_input']};
-        color: {colors['text_primary']};
+        background-color: {colors['bg_input']} !important;
+        color: {colors['text_primary']} !important;
         border: 1px solid {colors['border_color']};
         border-radius: 6px;
         font-size: 0.9rem;
@@ -429,20 +438,22 @@ def get_custom_css(theme: str = "dark") -> str:
     }}
     
     .stCheckbox {{
-        color: {colors['text_secondary']};
+        color: {colors['text_secondary']} !important;
     }}
     
     .dataframe {{
         font-size: 0.85rem;
     }}
     
+    /* Alerts */
     .stAlert {{
-        background-color: {colors['bg_card']};
+        background-color: {colors['bg_card']} !important;
         border: 1px solid {colors['border_color']};
-        color: {colors['text_secondary']};
+        color: {colors['text_secondary']} !important;
         border-radius: 6px;
     }}
     
+    /* Download button */
     .download-btn {{
         background: {colors['bg_card']};
         border: 1px solid {colors['border_color']};
@@ -459,7 +470,7 @@ def get_custom_css(theme: str = "dark") -> str:
         background: {colors['border_color']};
     }}
     
-    /* AI Response Card */
+    /* AI Response card */
     .ai-response-card {{
         background: rgba(102, 126, 234, 0.1);
         border-left: 4px solid #667eea;
@@ -470,39 +481,39 @@ def get_custom_css(theme: str = "dark") -> str:
     
     .ai-response-label {{
         font-size: 0.8rem;
-        color: #667eea;
+        color: #667eea !important;
         margin-bottom: 0.5rem;
     }}
     
-    /* Out of Scope Card */
+    /* Out of scope card */
     .out-of-scope-card {{
         background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
         padding: 1.5rem;
         border-radius: 8px;
         margin: 1rem 0;
-        color: white;
+        color: white !important;
     }}
     
-    /* Success Card (Purple - consistent with brand) */
+    /* Success card */
     .success-card {{
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         border-radius: 16px;
         padding: 2rem;
         margin-bottom: 1.5rem;
-        color: white;
+        color: white !important;
         text-align: center;
     }}
     
-    /* Profile Card (Purple) */
+    /* Profile card */
     .profile-card {{
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         border-radius: 16px;
         padding: 2rem;
         margin-bottom: 1.5rem;
-        color: white;
+        color: white !important;
     }}
     
-    /* Highlight Item */
+    /* Highlight items */
     .highlight-item {{
         display: flex;
         align-items: center;
@@ -511,10 +522,10 @@ def get_custom_css(theme: str = "dark") -> str:
     }}
     
     .highlight-check {{
-        color: #667eea;
+        color: #667eea !important;
     }}
     
-    /* Comparison Cards */
+    /* Comparison cards */
     .comparison-container {{
         display: flex;
         gap: 1rem;
@@ -525,7 +536,7 @@ def get_custom_css(theme: str = "dark") -> str:
         flex: 1;
         border-radius: 16px;
         padding: 1.5rem;
-        color: white;
+        color: white !important;
         text-align: center;
     }}
     
@@ -542,41 +553,42 @@ def get_custom_css(theme: str = "dark") -> str:
         align-items: center;
         font-size: 1.5rem;
         font-weight: bold;
-        color: #667eea;
+        color: #667eea !important;
     }}
 
-/* =============================================================================
-       PREMIUM DATA TABLES
-       ============================================================================= */
-    
-    /* Table wrapper */
+    /* Data tables */
     [data-testid="stDataFrame"] {{
         border-radius: 16px !important;
         overflow: hidden !important;
+        background-color: #1a202c !important;
     }}
     
-    /* Table container */
     [data-testid="stDataFrame"] > div {{
         border-radius: 16px !important;
         overflow: hidden !important;
         border: 1px solid rgba(102, 126, 234, 0.15) !important;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2) !important;
+        background-color: #1a202c !important;
     }}
     
-    /* Table header */
+    [data-testid="stDataFrame"] table {{
+        background-color: #1a202c !important;
+    }}
+    
+    /* Table headers */
     [data-testid="stDataFrame"] th,
     .stDataFrame thead tr th {{
-        background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(118, 75, 162, 0.15) 100%) !important;
+        background: linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.25) 100%) !important;
         color: #ffffff !important;
         font-weight: 700 !important;
         font-size: 0.75rem !important;
         letter-spacing: 0.05em !important;
         text-transform: uppercase !important;
         padding: 1rem 1.25rem !important;
-        border-bottom: 2px solid rgba(102, 126, 234, 0.3) !important;
+        border-bottom: 2px solid rgba(102, 126, 234, 0.4) !important;
     }}
     
-    /* Table body cells */
+    /* Table cells */
     [data-testid="stDataFrame"] td,
     .stDataFrame tbody tr td {{
         padding: 0.875rem 1.25rem !important;
@@ -584,42 +596,42 @@ def get_custom_css(theme: str = "dark") -> str:
         color: rgba(255, 255, 255, 0.9) !important;
         border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
         transition: all 0.2s ease !important;
+        background-color: transparent !important;
     }}
     
-    /* Alternating rows - odd */
+    /* Alternating row colors */
     [data-testid="stDataFrame"] tbody tr:nth-child(odd) td,
     .stDataFrame tbody tr:nth-child(odd) td {{
-        background: rgba(102, 126, 234, 0.03) !important;
+        background: rgba(102, 126, 234, 0.05) !important;
     }}
     
-    /* Alternating rows - even */
     [data-testid="stDataFrame"] tbody tr:nth-child(even) td,
     .stDataFrame tbody tr:nth-child(even) td {{
-        background: rgba(102, 126, 234, 0.06) !important;
+        background: rgba(102, 126, 234, 0.08) !important;
     }}
     
-    /* Row hover effect */
+    /* Row hover */
     [data-testid="stDataFrame"] tbody tr:hover td,
     .stDataFrame tbody tr:hover td {{
         background: rgba(102, 126, 234, 0.15) !important;
         color: #ffffff !important;
     }}
     
-    /* First column (City name) - make it stand out */
+    /* First column emphasis */
     [data-testid="stDataFrame"] td:first-child,
     .stDataFrame tbody tr td:first-child {{
         font-weight: 600 !important;
         color: #ffffff !important;
     }}
     
-    /* Number columns - right align */
+    /* Number columns alignment */
     [data-testid="stDataFrame"] td:nth-child(n+3),
     .stDataFrame tbody tr td:nth-child(n+3) {{
         text-align: right !important;
         font-variant-numeric: tabular-nums !important;
     }}
     
-    /* Download button styling */
+    /* Download button in tables */
     .stDownloadButton > button {{
         background: rgba(30, 41, 59, 0.8) !important;
         border: 1px solid rgba(255, 255, 255, 0.15) !important;
@@ -638,6 +650,88 @@ def get_custom_css(theme: str = "dark") -> str:
         border-color: rgba(99, 102, 241, 0.4) !important;
         color: #ffffff !important;
         transform: translateY(-1px) !important;
+    }}
+
+    /* Force dark mode overrides for Streamlit Cloud */
+    [data-testid="stAppViewContainer"] > div {{
+        background-color: #0f1419 !important;
+    }}
+    
+    [data-testid="stHeader"] {{
+        background-color: transparent !important;
+    }}
+    
+    [data-testid="stToolbar"] {{
+        background-color: transparent !important;
+    }}
+    
+    /* Fix any text that might inherit light mode colors */
+    .element-container {{
+        color: #ffffff !important;
+    }}
+    
+    .stMarkdown p {{
+        color: #e2e8f0 !important;
+    }}
+    
+    /* Force card text to stay white */
+    [class*="card"] {{
+        color: #ffffff !important;
+    }}
+    
+    [class*="card"] p,
+    [class*="card"] span,
+    [class*="card"] div {{
+        color: inherit !important;
+    }}
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {{
+        background-color: {colors['bg_card']} !important;
+        color: {colors['text_primary']} !important;
+    }}
+    
+    .streamlit-expanderContent {{
+        background-color: {colors['bg_card']} !important;
+        color: {colors['text_secondary']} !important;
+    }}
+    
+    /* Caption text */
+    .stCaption {{
+        color: {colors['text_muted']} !important;
+    }}
+    
+    /* Mobile responsive adjustments */
+    @media (max-width: 768px) {{
+        .hero-section {{
+            padding: 0.75rem 1rem;
+        }}
+        
+        .hero-title {{
+            font-size: 1.2rem;
+        }}
+        
+        .hero-subtitle {{
+            font-size: 0.7rem;
+        }}
+        
+        .metric-card {{
+            padding: 1rem;
+        }}
+        
+        .metric-value {{
+            font-size: 1.8rem;
+        }}
+        
+        .insight-card-premium {{
+            padding: 1rem;
+        }}
+        
+        [data-testid="stDataFrame"] th,
+        [data-testid="stDataFrame"] td {{
+            padding: 0.5rem 0.75rem !important;
+            font-size: 0.75rem !important;
+        }}
     }}
 
     </style>
