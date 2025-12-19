@@ -49,31 +49,6 @@ def get_custom_css(theme: str = "dark") -> str:
     * {{
         font-family: 'Inter', sans-serif;
     }}
-
-    /* Search row - keep all elements on one line */
-    @media (max-width: 768px) {{
-        [data-testid="stHorizontalBlock"]:has(.stTextInput) {{
-            flex-wrap: nowrap !important;
-        }}
-        
-        [data-testid="stHorizontalBlock"]:has(.stTextInput) > div:first-child {{
-            flex: 1 1 auto !important;
-            min-width: 0 !important;
-        }}
-        
-        [data-testid="stHorizontalBlock"]:has(.stTextInput) > div:nth-child(2) {{
-            flex: 0 0 44px !important;
-        }}
-        
-        [data-testid="stHorizontalBlock"]:has(.stTextInput) > div:last-child {{
-            flex: 0 0 70px !important;
-        }}
-    }}
-    
-    /* Prevent Search button text from wrapping */
-    .stButton > button {{
-        white-space: nowrap !important;
-    }}
         
     .main {{
         background-color: {colors['bg_main']};
