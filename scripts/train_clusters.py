@@ -40,18 +40,18 @@ def train_clusters(n_clusters: int = 5):
     Returns:
         dict: Training results including metrics
     """
-    print("🔵 Loading cities...")
+    print("Loading cities...")
     df = load_city_data()
     print(f"   Loaded {len(df)} cities")
     
     FEATURES = ["population", "median_age", "avg_household_size"]
     X = df[FEATURES]
     
-    print("🔵 Scaling features...")
+    print("Scaling features...")
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     
-    print(f"🔵 Training KMeans with {n_clusters} clusters...")
+    print(f"Training KMeans with {n_clusters} clusters...")
     kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init="auto")
     labels = kmeans.fit_predict(X_scaled)
     
@@ -61,16 +61,15 @@ def train_clusters(n_clusters: int = 5):
     
     df["cluster"] = labels
     
-    # -------------------------------------------------
+
     # CRITICAL: Bundle keys must match cluster_router.py
-    # cluster_router.py expects: cluster_data["model"], cluster_data["scaler"]
-    # -------------------------------------------------
+
     os.makedirs("models", exist_ok=True)
     MODEL_PATH = os.path.join("models", "city_clusters.pkl")
     
     bundle = {
-        "model": kmeans,      # ✅ CORRECT KEY (not "kmeans")
-        "scaler": scaler,     # ✅ CORRECT KEY
+        "model": kmeans,      
+        "scaler": scaler,     
         "features": FEATURES,
         "n_clusters": n_clusters,
         "silhouette_score": sil_score,
