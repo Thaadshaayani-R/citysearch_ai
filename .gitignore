@@ -2,9 +2,9 @@
 # ENVIRONMENT / SECRETS
 .env
 venv/
-streamlit_secrets.toml
-.streamlit/* 
-!.streamlit/secrets.toml
+# Streamlit secrets (never commit)
+.streamlit/secrets.toml
+
 
 
 # PYTHON CACHE
