@@ -12,9 +12,9 @@ from db_config import get_engine
 
 load_dotenv()
 
-# ---------------------------------------
+
 # 2) OpenAI Client
-# ---------------------------------------
+
 def get_openai_client():
     key = st.secrets["OPENAI_API_KEY"]
     if not key:
@@ -22,9 +22,9 @@ def get_openai_client():
     return OpenAI(api_key=key)
 
 
-# ---------------------------------------
+
 # 3) Generate Embeddings
-# ---------------------------------------
+
 def main():
     engine = get_engine()
     client = get_openai_client()
