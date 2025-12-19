@@ -50,30 +50,29 @@ def get_custom_css(theme: str = "dark") -> str:
         font-family: 'Inter', sans-serif;
     }}
 
-    /* Force search row to stay inline on mobile */
-    [data-testid="stHorizontalBlock"]:has(.stTextInput) {{
-        flex-wrap: nowrap !important;
-        gap: 0.5rem !important;
+    /* Search row - keep all elements on one line */
+    @media (max-width: 768px) {{
+        [data-testid="stHorizontalBlock"]:has(.stTextInput) {{
+            flex-wrap: nowrap !important;
+        }}
+        
+        [data-testid="stHorizontalBlock"]:has(.stTextInput) > div:first-child {{
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
+        }}
+        
+        [data-testid="stHorizontalBlock"]:has(.stTextInput) > div:nth-child(2) {{
+            flex: 0 0 44px !important;
+        }}
+        
+        [data-testid="stHorizontalBlock"]:has(.stTextInput) > div:last-child {{
+            flex: 0 0 70px !important;
+        }}
     }}
     
-    [data-testid="stHorizontalBlock"]:has(.stTextInput) > div {{
-        flex: unset !important;
-        width: auto !important;
-        min-width: 0 !important;
-    }}
-    
-    [data-testid="stHorizontalBlock"]:has(.stTextInput) > div:first-child {{
-        flex: 1 !important;
-    }}
-    
-    [data-testid="stHorizontalBlock"]:has(.stTextInput) > div:nth-child(2) {{
-        width: 40px !important;
-        flex-shrink: 0 !important;
-    }}
-    
-    [data-testid="stHorizontalBlock"]:has(.stTextInput) > div:last-child {{
-        width: 80px !important;
-        flex-shrink: 0 !important;
+    /* Prevent Search button text from wrapping */
+    .stButton > button {{
+        white-space: nowrap !important;
     }}
         
     .main {{
