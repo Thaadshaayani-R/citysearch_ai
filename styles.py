@@ -49,6 +49,32 @@ def get_custom_css(theme: str = "dark") -> str:
     * {{
         font-family: 'Inter', sans-serif;
     }}
+
+    /* Force search row to stay inline on mobile */
+    [data-testid="stHorizontalBlock"]:has(.stTextInput) {{
+        flex-wrap: nowrap !important;
+        gap: 0.5rem !important;
+    }}
+    
+    [data-testid="stHorizontalBlock"]:has(.stTextInput) > div {{
+        flex: unset !important;
+        width: auto !important;
+        min-width: 0 !important;
+    }}
+    
+    [data-testid="stHorizontalBlock"]:has(.stTextInput) > div:first-child {{
+        flex: 1 !important;
+    }}
+    
+    [data-testid="stHorizontalBlock"]:has(.stTextInput) > div:nth-child(2) {{
+        width: 40px !important;
+        flex-shrink: 0 !important;
+    }}
+    
+    [data-testid="stHorizontalBlock"]:has(.stTextInput) > div:last-child {{
+        width: 80px !important;
+        flex-shrink: 0 !important;
+    }}
         
     .main {{
         background-color: {colors['bg_main']};
