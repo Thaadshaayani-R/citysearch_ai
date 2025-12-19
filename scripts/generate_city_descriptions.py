@@ -10,9 +10,9 @@ from db_config import get_engine
 
 load_dotenv()
 
-# ---------------------------------------
+
 # 2) OpenAI Client
-# ---------------------------------------
+
 def get_openai_client():
     api_key = st.secrets["OPENAI_API_KEY"]
     if not api_key:
@@ -20,9 +20,9 @@ def get_openai_client():
     return OpenAI(api_key=api_key)
 
 
-# ---------------------------------------
+
 # 3) City Description Prompt
-# ---------------------------------------
+
 DESCRIPTION_PROMPT = """
 Generate a rich, meaningful profile for this U.S. city.
 
@@ -49,9 +49,9 @@ Write only the description. No headings.
 """
 
 
-# ---------------------------------------
+
 # 4) Main Script
-# ---------------------------------------
+
 def main():
     engine = get_engine()
     client = get_openai_client()
