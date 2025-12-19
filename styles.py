@@ -376,6 +376,7 @@ def get_custom_css(theme: str = "dark") -> str:
         transition: all 0.2s;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         letter-spacing: 0.02em;
+        white-space: nowrap !important;
     }}
     
     .stButton>button:hover {{
@@ -701,8 +702,25 @@ def get_custom_css(theme: str = "dark") -> str:
         color: {colors['text_muted']} !important;
     }}
     
-    /* Mobile responsive adjustments */
+    /* Mobile responsive - search row fix */
     @media (max-width: 768px) {{
+        [data-testid="stHorizontalBlock"]:has(.stTextInput) {{
+            flex-wrap: nowrap !important;
+        }}
+        
+        [data-testid="stHorizontalBlock"]:has(.stTextInput) > div:first-child {{
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
+        }}
+        
+        [data-testid="stHorizontalBlock"]:has(.stTextInput) > div:nth-child(2) {{
+            flex: 0 0 44px !important;
+        }}
+        
+        [data-testid="stHorizontalBlock"]:has(.stTextInput) > div:last-child {{
+            flex: 0 0 70px !important;
+        }}
+        
         .hero-section {{
             padding: 0.75rem 1rem;
         }}
