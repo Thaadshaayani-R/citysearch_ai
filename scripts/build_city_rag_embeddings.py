@@ -12,9 +12,9 @@ from db_config import get_engine
 load_dotenv()
 
 
-# ---------------------------------------
+
 # OpenAI Client
-# ---------------------------------------
+
 def get_openai_client():
     key = st.secrets["OPENAI_API_KEY"]
     if not key:
@@ -22,9 +22,9 @@ def get_openai_client():
     return OpenAI(api_key=key)
 
 
-# ---------------------------------------
+
 # Build Embeddings in Batches
-# ---------------------------------------
+
 def build_embeddings(batch_size: int = 64):
     engine = get_engine()
     client = get_openai_client()
@@ -82,8 +82,8 @@ def build_embeddings(batch_size: int = 64):
     print("🎉 All embeddings created and stored in Azure SQL.")
 
 
-# ---------------------------------------
+
 # MAIN
-# ---------------------------------------
+
 if __name__ == "__main__":
     build_embeddings()
