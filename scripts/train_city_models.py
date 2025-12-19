@@ -14,9 +14,9 @@ from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestRegressor
 from db_config import get_engine
 
-# --------------------------------------------------------
+
 # Paths
-# --------------------------------------------------------
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))   # .../citysearch_ai/scripts
 PROJECT_ROOT = os.path.dirname(BASE_DIR)                # .../citysearch_ai
 MODEL_DIR = os.path.join(PROJECT_ROOT, "models")
@@ -27,9 +27,9 @@ print("MODEL_DIR:", MODEL_DIR)
 
 
 
-# --------------------------------------------------------
+
 # 2. Load data from Azure SQL
-# --------------------------------------------------------
+
 def load_city_data():
     engine = get_engine()
 
@@ -46,9 +46,9 @@ def load_city_data():
     return df
 
 
-# --------------------------------------------------------
+
 # 3. Create synthetic targets
-# --------------------------------------------------------
+
 def create_targets(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
@@ -80,9 +80,9 @@ def create_targets(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# --------------------------------------------------------
+
 # 4. Train + save one model
-# --------------------------------------------------------
+
 def train_model(df: pd.DataFrame, target_col: str, filename: str):
     X = df[["population", "median_age", "avg_household_size", "state"]]
     y = df[target_col]
@@ -115,9 +115,9 @@ def train_model(df: pd.DataFrame, target_col: str, filename: str):
     print(f"Saved → {path}")
 
 
-# --------------------------------------------------------
+
 # 5. Main
-# --------------------------------------------------------
+
 def main():
     print("Loading data...")
     df = load_city_data()
