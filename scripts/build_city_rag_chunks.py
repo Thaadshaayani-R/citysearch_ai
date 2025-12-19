@@ -11,9 +11,9 @@ from db_config import get_engine
 
 load_dotenv()
 
-# ---------------------------------------
+
 # 2) OpenAI Client
-# ---------------------------------------
+
 def get_openai_client():
     key = st.secrets["OPENAI_API_KEY"]
     if not key:
@@ -21,9 +21,9 @@ def get_openai_client():
     return OpenAI(api_key=key)
 
 
-# ---------------------------------------
+
 # 3) Load City Profiles
-# ---------------------------------------
+
 def load_city_profiles():
     engine = get_engine()
     sql = """
@@ -34,9 +34,9 @@ def load_city_profiles():
     return pd.read_sql(sql, engine)
 
 
-# ---------------------------------------
+
 # 4) GPT Prompt Template
-# ---------------------------------------
+
 SUMMARY_PROMPT_TEMPLATE = """
 You are helping build a city information assistant.
 
@@ -62,9 +62,9 @@ DESCRIPTION:
 """
 
 
-# ---------------------------------------
+
 # 5) Generate & Insert RAG Chunks
-# ---------------------------------------
+
 def summarize_city_rows(df: pd.DataFrame):
     engine = get_engine()
     client = get_openai_client()
@@ -148,9 +148,9 @@ def summarize_city_rows(df: pd.DataFrame):
     print("\n🎉 Finished creating RAG chunks.")
 
 
-# ---------------------------------------
+
 # MAIN
-# ---------------------------------------
+
 if __name__ == "__main__":
     profiles = load_city_profiles()
     summarize_city_rows(profiles)
