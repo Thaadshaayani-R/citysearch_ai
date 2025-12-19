@@ -1,8 +1,5 @@
-# scripts/train_clusters.py (FIXED VERSION)
-"""
-Train KMeans clustering model for cities.
-Saves model bundle compatible with cluster_router.py
-"""
+# scripts/train_clusters.py 
+
 
 import os
 import pickle
