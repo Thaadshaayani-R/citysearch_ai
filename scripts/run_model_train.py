@@ -21,7 +21,7 @@ def main():
     print("VALIDATION REPORT:", report)
 
     if report["status"] != "PASSED":
-        print("❌ Data validation FAILED. Fix data before training.")
+        print("Data validation FAILED. Fix data before training.")
         return
 
     # 3) Feature engineering
@@ -49,13 +49,13 @@ def main():
         feature_cols=feature_cols,
     )
 
-    print(f"✅ Model saved to: {model_path}")
-    print(f"✅ Metadata saved to: {metadata_path}")
+    print(f"Model saved to: {model_path}")
+    print(f"Metadata saved to: {metadata_path}")
 
     # 6) Log experiment
     params = {"n_clusters": 5, "random_state": 42}
     exp_row = trainer.log_experiment(model_name=model_name, metrics=metrics, params=params)
-    print("📒 Experiment logged:", exp_row)
+    print("Experiment logged:", exp_row)
 
     # (Optional) show a preview of clusters
     print(df_with_clusters[["city", "state", "cluster_label", "lifestyle_score"]].head())
